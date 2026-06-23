@@ -4,6 +4,8 @@ A depth-based topographic post-process for Godot. It recolors whatever a camera 
 
 It is a `CompositorEffect`, so it attaches to a camera as a resource with **no extra code**. Use it on a minimap/world-map `SubViewport` camera, or on the main camera for a full-screen effect.
 
+![Topographic map render from a top-down camera](preview.png)
+
 ## Requirements
 
 - Godot 4.7+, **.NET / C# edition** (the effect is a C# script).
