@@ -59,46 +59,35 @@ public partial class PlayerController : CharacterBody3D
             velocity.Y -= _gravity * (float)delta;
         }
 
-        if (InputEnabled)
-        {
-            if (Input.IsActionPressed("jump") && IsOnFloor())
-            {
-                velocity.Y = JumpVelocity;
-            }
-
-            var input = Vector2.Zero;
-            if (Input.IsActionPressed("move_forward"))
-            {
-                input.Y -= 1f;
-            }
-
-            if (Input.IsActionPressed("move_back"))
-            {
-                input.Y += 1f;
-            }
-
-            if (Input.IsActionPressed("move_left"))
-            {
-                input.X -= 1f;
-            }
-
-            if (Input.IsActionPressed("move_right"))
-            {
-                input.X += 1f;
-            }
-
-            float speed = Input.IsActionPressed("sprint") ? SprintSpeed : WalkSpeed;
-            var direction = (Transform.Basis * new Vector3(input.X, 0f, input.Y)).Normalized();
-            velocity.X = direction.X * speed;
-            velocity.Z = direction.Z * speed;
-        }
-        else
-        {
-            velocity.X = 0f;
-            velocity.Z = 0f;
-        }
+        ApplyMovement(ref velocity);
+        ApplyJump(ref velocity);
 
         Velocity = velocity;
         MoveAndSlide();
+    }
+
+    // WASD relative to look direction, zeroed when input is suppressed.
+    private void ApplyMovement(ref Vector3 velocity)
+    {
+        if (!InputEnabled)
+        {
+            velocity.X = 0f;
+            velocity.Z = 0f;
+            return;
+        }
+
+        var input = Input.GetVector("move_left", "move_right", "move_forward", "move_back");
+        float speed = Input.IsActionPressed("sprint") ? SprintSpeed : WalkSpeed;
+        var direction = (Transform.Basis * new Vector3(input.X, 0f, input.Y)).Normalized();
+        velocity.X = direction.X * speed;
+        velocity.Z = direction.Z * speed;
+    }
+
+    private void ApplyJump(ref Vector3 velocity)
+    {
+        if (InputEnabled && Input.IsActionPressed("jump") && IsOnFloor())
+        {
+            velocity.Y = JumpVelocity;
+        }
     }
 }
