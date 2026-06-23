@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <rect width="128" height="128" rx="16" fill="#2b3a2e"/>
+  <g fill="none" stroke="#cdd9b8" stroke-width="3">
+    <circle cx="64" cy="64" r="14"/>
+    <circle cx="64" cy="64" r="28"/>
+    <circle cx="64" cy="64" r="42"/>
+    <circle cx="64" cy="64" r="56"/>
+  </g>
+  <circle cx="64" cy="64" r="6" fill="#f4f4f8"/>
+</svg>
