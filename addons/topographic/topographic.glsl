@@ -7,13 +7,13 @@ layout(set = 0, binding = 0, rgba16f) uniform image2D color_image;
 layout(set = 0, binding = 1) uniform sampler2D depth_texture;
 
 layout(set = 0, binding = 2, std140) uniform Params {
-	mat4 proj;      // forward camera projection (view -> clip)
-	mat4 inv_view;  // camera transform (view -> world)
-	vec4 misc0; // raster_size.xy, min_elevation, max_elevation
-	vec4 misc1; // levels, fill_low, fill_high, major_every
-	vec4 misc2; // minor_width_px, major_width_px, minor_opacity, major_opacity
-	vec4 misc3; // contours_enabled, smooth_ramp, minor_fade, major_contours_enabled
-	vec4 misc4; // invert_ramp, unused, unused, unused
+	mat4 proj;             // forward camera projection (view -> clip)
+	mat4 inv_view;         // camera transform (view -> world)
+	vec4 raster_and_range; // raster_size.xy, min_elevation, max_elevation
+	vec4 ramp_params;      // levels, fill_low, fill_high, major_every
+	vec4 contour_weights;  // minor_width_px, major_width_px, minor_opacity, major_opacity
+	vec4 contour_flags;    // contours_enabled, smooth_ramp, minor_fade, major_contours_enabled
+	vec4 mode_flags;       // invert_ramp, unused, unused, unused
 	vec4 ink_color;
 	vec4 paper_color;
 	vec4 background_color;
@@ -46,12 +46,12 @@ float iso(float q, float deriv, float width_px) {
 
 void main() {
 	ivec2 px = ivec2(gl_GlobalInvocationID.xy);
-	ivec2 size = ivec2(p.misc0.xy);
+	ivec2 size = ivec2(p.raster_and_range.xy);
 	if (px.x >= size.x || px.y >= size.y) {
 		return;
 	}
 
-	vec2 inv_size = 1.0 / p.misc0.xy;
+	vec2 inv_size = 1.0 / p.raster_and_range.xy;
 	vec2 uv = (vec2(px) + 0.5) * inv_size;
 
 	mat4 inv_proj = inverse(p.proj);
@@ -62,21 +62,21 @@ void main() {
 	// Empty space = near/far plane. Covers reverse-Z and standard depth.
 	bool is_background = (depth <= 0.000001 || depth >= 0.999999);
 
-	float min_e = p.misc0.z;
-	float max_e = p.misc0.w;
-	float levels_f = max(p.misc1.x, 1.0);
-	float fill_low = p.misc1.y;
-	float fill_high = p.misc1.z;
-	float major_every = max(p.misc1.w, 1.0);
-	float minor_width_px = p.misc2.x;
-	float major_width_px = p.misc2.y;
-	float minor_opacity = p.misc2.z;
-	float major_opacity = p.misc2.w;
-	bool contours_enabled = p.misc3.x > 0.5;
-	bool smooth_ramp = p.misc3.y > 0.5;
-	float minor_fade = p.misc3.z;
-	bool major_contours_enabled = p.misc3.w > 0.5;
-	bool invert_ramp = p.misc4.x > 0.5;
+	float min_e = p.raster_and_range.z;
+	float max_e = p.raster_and_range.w;
+	float levels_f = max(p.ramp_params.x, 1.0);
+	float fill_low = p.ramp_params.y;
+	float fill_high = p.ramp_params.z;
+	float major_every = max(p.ramp_params.w, 1.0);
+	float minor_width_px = p.contour_weights.x;
+	float major_width_px = p.contour_weights.y;
+	float minor_opacity = p.contour_weights.z;
+	float major_opacity = p.contour_weights.w;
+	bool contours_enabled = p.contour_flags.x > 0.5;
+	bool smooth_ramp = p.contour_flags.y > 0.5;
+	float minor_fade = p.contour_flags.z;
+	bool major_contours_enabled = p.contour_flags.w > 0.5;
+	bool invert_ramp = p.mode_flags.x > 0.5;
 
 	float range = max(max_e - min_e, 0.0001);
 	float te = clamp((elevation - min_e) / range, 0.0, 1.0);

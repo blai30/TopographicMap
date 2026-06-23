@@ -1,4 +1,3 @@
-using System;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Godot;
@@ -178,40 +177,50 @@ public partial class TopographicEffect : CompositorEffect
         _rd.FreeRid(paramsBuffer);
     }
 
-    // std140 UBO: two mat4 (proj, inv_view) then misc/color vec4s.
-    // Must stay in lockstep with the Params block in topographic.glsl.
+    // Mirrors the std140 Params block in topographic.glsl one-to-one. Every member
+    // is padded to a full vec4, so std140 alignment is automatic (each row lands on
+    // a 16-byte boundary) and LayoutKind.Sequential reproduces the shader layout
+    // byte-for-byte. Field order and per-lane meaning must match the shader block.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct TopoParams
+    {
+        public Projection Proj; // forward camera projection (view -> clip)
+        public Projection InvView; // camera transform (view -> world)
+        public Vector4 RasterAndRange; // raster_size.xy, min_elevation, max_elevation
+        public Vector4 RampParams; // levels, fill_low, fill_high, major_every
+        public Vector4 ContourWeights; // minor_width_px, major_width_px, minor_opacity, major_opacity
+        public Vector4 ContourFlags; // contours_enabled, smooth_ramp, minor_fade, major_contours_enabled
+        public Vector4 ModeFlags; // invert_ramp, unused, unused, unused
+        public Vector4 InkColor;
+        public Vector4 PaperColor;
+        public Vector4 BackgroundColor;
+    }
+
     private byte[] BuildParams(Projection proj, Transform3D cam, Vector2I size)
     {
-        float[] data = new float[64];
-        int i = 0;
+        // Pack inv_view from the camera's basis columns and origin directly, so the
+        // columns match the shader's expected view -> world matrix exactly.
+        var invView = new Projection(
+            new(cam.Basis.X.X, cam.Basis.X.Y, cam.Basis.X.Z, 0f),
+            new(cam.Basis.Y.X, cam.Basis.Y.Y, cam.Basis.Y.Z, 0f),
+            new(cam.Basis.Z.X, cam.Basis.Z.Y, cam.Basis.Z.Z, 0f),
+            new(cam.Origin.X, cam.Origin.Y, cam.Origin.Z, 1f));
 
-        Column(proj.X.X, proj.X.Y, proj.X.Z, proj.X.W);
-        Column(proj.Y.X, proj.Y.Y, proj.Y.Z, proj.Y.W);
-        Column(proj.Z.X, proj.Z.Y, proj.Z.Z, proj.Z.W);
-        Column(proj.W.X, proj.W.Y, proj.W.Z, proj.W.W);
-
-        Column(cam.Basis.X.X, cam.Basis.X.Y, cam.Basis.X.Z, 0f);
-        Column(cam.Basis.Y.X, cam.Basis.Y.Y, cam.Basis.Y.Z, 0f);
-        Column(cam.Basis.Z.X, cam.Basis.Z.Y, cam.Basis.Z.Z, 0f);
-        Column(cam.Origin.X, cam.Origin.Y, cam.Origin.Z, 1f);
-
-        Column(size.X, size.Y, MinElevation, MaxElevation);
-        Column(Levels, FillLow, FillHigh, MajorEvery);
-        Column(MinorWidthPx, MajorWidthPx, MinorOpacity, MajorOpacity);
-        Column(ContoursEnabled ? 1f : 0f, SmoothRamp ? 1f : 0f, MinorFade, MajorContoursEnabled ? 1f : 0f);
-        Column(InvertRamp ? 1f : 0f, 0f, 0f, 0f);
-        Column(InkColor.R, InkColor.G, InkColor.B, InkColor.A);
-        Column(PaperColor.R, PaperColor.G, PaperColor.B, PaperColor.A);
-        Column(BackgroundColor.R, BackgroundColor.G, BackgroundColor.B, BackgroundColor.A);
-
-        return MemoryMarshal.AsBytes(data.AsSpan()).ToArray();
-
-        void Column(float x, float y, float z, float w)
+        var p = new TopoParams
         {
-            data[i++] = x;
-            data[i++] = y;
-            data[i++] = z;
-            data[i++] = w;
-        }
+            Proj = proj,
+            InvView = invView,
+            RasterAndRange = new(size.X, size.Y, MinElevation, MaxElevation),
+            RampParams = new(Levels, FillLow, FillHigh, MajorEvery),
+            ContourWeights = new(MinorWidthPx, MajorWidthPx, MinorOpacity, MajorOpacity),
+            ContourFlags = new(
+                ContoursEnabled ? 1f : 0f, SmoothRamp ? 1f : 0f, MinorFade, MajorContoursEnabled ? 1f : 0f),
+            ModeFlags = new(InvertRamp ? 1f : 0f, 0f, 0f, 0f),
+            InkColor = new(InkColor.R, InkColor.G, InkColor.B, InkColor.A),
+            PaperColor = new(PaperColor.R, PaperColor.G, PaperColor.B, PaperColor.A),
+            BackgroundColor = new(BackgroundColor.R, BackgroundColor.G, BackgroundColor.B, BackgroundColor.A)
+        };
+
+        return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref p, 1)).ToArray();
     }
 }
