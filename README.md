@@ -1,8 +1,8 @@
 ![Topographic map of a large procedural landscape in the Classic Ink preset](screenshots/topographic-map.png)
 
-# Topographic Camera Shader (Godot 4.7, C#)
+# Topographic Map Camera Compositor Effect Shader (Godot 4.7, C#)
 
-A distributable, drop-in **topographic-map post-process** for Godot. It recolors whatever a camera renders into a **flat, stepped topographic map**: elevation quantized into flat shade steps drawn from a color **gradient** (a 2-stop gradient gives a clean monochrome ink-on-paper look; multi-stop gradients give hypsometric sea-to-peak tints), with a contour line at every step and bold index lines every few steps. No relief or hillshading, just a clean stylized "world map" look. Ships with a ready camera prefab and presets (Classic Ink, Blueprint, Nautical, Heatmap).
+A **topographic-map post-process** for Godot. It recolors whatever a camera renders into a **flat, stepped topographic map**: elevation quantized into flat shade steps drawn from a color **gradient** (a 2-stop gradient gives a clean monochrome ink-on-paper look; multi-stop gradients give hypsometric sea-to-peak tints), with a contour line at every step and bold index lines every few steps (optional). No relief or hillshading, just a clean stylized "world map" look. Similar to the world map in *Breath of the Wild*. Ships with a ready camera prefab and presets (Classic Ink, Blueprint, Nautical, Heatmap).
 
 The effect reads **only the depth buffer**, so the scene needs no special materials, and it ships as a `CompositorEffect` you assign to a camera with no extra code.
 
