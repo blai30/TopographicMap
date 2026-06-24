@@ -172,7 +172,8 @@ public partial class TopographicEffect : CompositorEffect
     // Self-frees GPU resources at runtime. FreeRid is only legal on the render thread,
     // so the frees are dispatched there (mirroring InitializeCompute). At app shutdown the
     // device may be torn down before that runs, so RIDs leak then -- harmless, process is
-    // exiting. This keeps the addon drop-in with no host code required.
+    // exiting (see the "RID leaked" note in the gotchas; it is a known Godot limitation for
+    // C# CompositorEffects, not a bug here). This keeps the addon drop-in with no host code.
     public override void _Notification(int what)
     {
         if (what != NotificationPredelete || _freed || _rd == null)
@@ -181,48 +182,32 @@ public partial class TopographicEffect : CompositorEffect
         }
 
         _freed = true;
+        DisconnectGradientSignal();
 
+        // Capture by value -- Rids are structs and the array holds copies -- so the deferred
+        // callable never touches this object after it has been destroyed. Order matches the
+        // original frees (pipeline before its shader) so nothing is freed via a stale handle.
+        var rd = _rd;
+        Rid[] rids = [_pipeline, _shader, _depthSampler, _gradientSampler, _gradientTexture];
+        RenderingServer.CallOnRenderThread(Callable.From(() =>
+        {
+            foreach (var rid in rids)
+            {
+                if (rid.IsValid)
+                {
+                    rd.FreeRid(rid);
+                }
+            }
+        }));
+    }
+
+    private void DisconnectGradientSignal()
+    {
         var onChanged = Callable.From(OnGradientChanged);
         if (Gradient != null && Gradient.IsConnected(Resource.SignalName.Changed, onChanged))
         {
             Gradient.Disconnect(Resource.SignalName.Changed, onChanged);
         }
-
-        // Capture by value -- Rids are structs -- so the deferred callable does not touch
-        // this object after it has been destroyed.
-        var rd = _rd;
-        var pipeline = _pipeline;
-        var shader = _shader;
-        var depthSampler = _depthSampler;
-        var gradientSampler = _gradientSampler;
-        var gradientTexture = _gradientTexture;
-        RenderingServer.CallOnRenderThread(Callable.From(() =>
-        {
-            if (pipeline.IsValid)
-            {
-                rd.FreeRid(pipeline);
-            }
-
-            if (shader.IsValid)
-            {
-                rd.FreeRid(shader);
-            }
-
-            if (depthSampler.IsValid)
-            {
-                rd.FreeRid(depthSampler);
-            }
-
-            if (gradientSampler.IsValid)
-            {
-                rd.FreeRid(gradientSampler);
-            }
-
-            if (gradientTexture.IsValid)
-            {
-                rd.FreeRid(gradientTexture);
-            }
-        }));
     }
 
     public override void _RenderCallback(int effectCallbackType, RenderData renderData)
@@ -232,8 +217,13 @@ public partial class TopographicEffect : CompositorEffect
             return;
         }
 
-        var sceneBuffers = renderData.GetRenderSceneBuffers() as RenderSceneBuffersRD;
-        var sceneData = renderData.GetRenderSceneData() as RenderSceneDataRD;
+        // These C# wrappers must be disposed deterministically on the render thread.
+        // Left to the GC, they are finalized on a background thread and their Dispose
+        // calls free_rid off the render thread, spamming "free_rid can only be called
+        // from the render thread" at random (Godot issue #104263). `using` frees them
+        // here, on the render thread, before the callback returns.
+        using var sceneBuffers = renderData.GetRenderSceneBuffers() as RenderSceneBuffersRD;
+        using var sceneData = renderData.GetRenderSceneData() as RenderSceneDataRD;
         if (sceneBuffers == null || sceneData == null)
         {
             return;
