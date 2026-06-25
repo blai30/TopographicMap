@@ -1,7 +1,4 @@
-[gd_resource type="GradientTexture1D" load_steps=2 format=3]
-
-; Swiss / alpine style: meadow and forest greens give way to grey rock and snow.
-; Emphasizes rock and high relief over the warmer atlas browns.
+[gd_resource type="GradientTexture1D" format=3 uid="uid://vkvqxlin5axa"]
 
 [sub_resource type="Gradient" id="Gradient_alpine"]
 offsets = PackedFloat32Array(0, 0.3, 0.6, 0.85, 1)
@@ -9,4 +6,3 @@ colors = PackedColorArray(0.48, 0.6, 0.4, 1, 0.36, 0.5, 0.33, 1, 0.55, 0.55, 0.5
 
 [resource]
 gradient = SubResource("Gradient_alpine")
-width = 256

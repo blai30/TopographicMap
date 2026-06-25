@@ -6,9 +6,9 @@ shader_type spatial;
 // can be reproduced by the collision baker, keeping collider and mesh aligned.
 // Heights span min_height..max_height so water areas can sit below Y=0.
 
-uniform sampler2D heightmap : source_color, filter_linear, repeat_disable;
-uniform float terrain_size = 768.0;
-uniform float heightmap_resolution = 768.0;
+uniform sampler2D heightmap : filter_linear, repeat_disable;
+uniform float terrain_size = 1536.0;
+uniform float heightmap_resolution = 512.0;
 uniform float min_height = -40.0;
 uniform float max_height = 110.0;
 uniform vec3 sand_color : source_color = vec3(0.78, 0.72, 0.50);

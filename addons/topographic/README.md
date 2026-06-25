@@ -19,6 +19,15 @@ A depth-based topographic post-process for Godot.
 3. Create a `Compositor`, add a `TopographicCompositorEffect` to its effects, and assign the compositor to the top-down camera. Set `CameraY`, `NearPlane`, and `FarPlane` to bracket the terrain height range; set `HeightMin`, `HeightMax`, and `ContourInterval` for the elevation banding.
 4. Display the `SubViewport`'s `ViewportTexture` in a `TextureRect`.
 
+## Gradient presets
+
+The `ColorRamp` property takes a `GradientTexture1D` that maps elevation
+(`HeightMin`..`HeightMax`) to color. Ready-made presets live in `gradients/`:
+`hypsometric_classic`, `hypsometric_atlas`, `alpine`, `sepia_vintage`,
+`grayscale`, `viridis`, `blueprint`, `heatmap`, and `nautical`. Drop one into
+the `ColorRamp` slot, or duplicate and edit it. When `ColorRamp` is left empty a
+built-in hypsometric ramp is used.
+
 ## License
 
 MIT. See `LICENSE`.

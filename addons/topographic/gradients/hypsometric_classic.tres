@@ -1,7 +1,4 @@
-[gd_resource type="GradientTexture1D" load_steps=2 format=3]
-
-; Classic hypsometric tint: green lowlands through tan and brown to white peaks.
-; The most common physical relief map coloring.
+[gd_resource type="GradientTexture1D" format=3 uid="uid://cfyxwss4kt6j0"]
 
 [sub_resource type="Gradient" id="Gradient_hyp"]
 offsets = PackedFloat32Array(0, 0.25, 0.5, 0.75, 0.9, 1)
@@ -9,4 +6,3 @@ colors = PackedColorArray(0.4, 0.56, 0.3, 1, 0.62, 0.67, 0.36, 1, 0.78, 0.71, 0.
 
 [resource]
 gradient = SubResource("Gradient_hyp")
-width = 256

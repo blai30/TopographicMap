@@ -1,0 +1,13 @@
+[gd_resource type="ShaderMaterial" load_steps=3 format=3]
+
+[ext_resource type="Shader" uid="uid://df2f8x2eh3r6b" path="res://TopoDemo/shaders/terrain.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" uid="uid://cyl84wmfsm3j3" path="res://TopoDemo/assets/heightmap.exr" id="2_heightmap"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/heightmap = ExtResource("2_heightmap")
+shader_parameter/terrain_size = 1536.0
+shader_parameter/heightmap_resolution = 512.0
+shader_parameter/min_height = -40.0
+shader_parameter/max_height = 110.0

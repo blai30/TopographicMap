@@ -1,7 +1,4 @@
-[gd_resource type="GradientTexture1D" load_steps=2 format=3]
-
-; Neutral grayscale: dark lowlands to light peaks. Schematic, good as a base for
-; overlays or when only the contour lines should carry the styling.
+[gd_resource type="GradientTexture1D" format=3 uid="uid://b3a5886k2p87a"]
 
 [sub_resource type="Gradient" id="Gradient_gray"]
 offsets = PackedFloat32Array(0, 0.5, 1)
@@ -9,4 +6,3 @@ colors = PackedColorArray(0.15, 0.15, 0.16, 1, 0.55, 0.55, 0.56, 1, 0.96, 0.96, 
 
 [resource]
 gradient = SubResource("Gradient_gray")
-width = 256

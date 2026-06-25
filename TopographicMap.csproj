@@ -1,12 +1,7 @@
 <Project Sdk="Godot.NET.Sdk/4.7.0">
-    <PropertyGroup>
-        <TargetFramework>net10.0</TargetFramework>
-        <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net10.0</TargetFramework>
-        <EnableDynamicLoading>true</EnableDynamicLoading>
-        <AssemblyName>TopographicMap</AssemblyName>
-        <RootNamespace>TopographicMap</RootNamespace>
-    </PropertyGroup>
-    <ItemGroup>
-        <Folder Include="addons\topographic\"/>
-    </ItemGroup>
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
 </Project>
