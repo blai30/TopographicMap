@@ -7,9 +7,10 @@
 [ext_resource type="Shape3D" path="res://TopoDemo/assets/terrain_collision.res" id="8_terraincol"]
 [ext_resource type="Texture2D" uid="uid://go7bx267tmle" path="res://addons/topographic/gradients/hypsometric_deep.tres" id="10_wu0y7"]
 [ext_resource type="Script" uid="uid://cb6kukq0i4na7" path="res://TopoDemo/scripts/PlayerController.cs" id="20_ypqk8"]
-[ext_resource type="Shader" uid="uid://xxh1rpgwq2j5" path="res://addons/topographic/marker.gdshader" id="40_marker"]
+[ext_resource type="Shader" uid="uid://c526piefpacph" path="res://addons/topographic/marker_overlay.gdshader" id="40_marker"]
 [ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic_style.gdshader" id="70_style"]
+[ext_resource type="Script" uid="uid://ch8h1lwga1tmm" path="res://addons/topographic/ContourLayer.cs" id="72_contour"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.28, 0.45, 0.75, 1)
@@ -58,32 +59,19 @@ height = 1.8
 radius = 0.3
 height = 1.8
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_marker"]
-render_priority = 0
-shader = ExtResource("40_marker")
-shader_parameter/marker_color = Color(0.95, 0.15, 0.15, 1)
-shader_parameter/outline_color = Color(1, 1, 1, 1)
-
-[sub_resource type="QuadMesh" id="QuadMesh_marker"]
-size = Vector2(30, 30)
-
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_minimap"]
 shader = ExtResource("70_style")
 shader_parameter/color_ramp = ExtResource("10_wu0y7")
 shader_parameter/height_min = -40.0
 shader_parameter/height_max = 110.0
 shader_parameter/contour_interval = 10.0
-shader_parameter/contour_width_px = 0.6
-shader_parameter/major_every = 5.0
-shader_parameter/major_width_mult = 2.2
-shader_parameter/contour_dynamic = true
-shader_parameter/contour_color = Color(0.12, 0.09, 0.06, 1)
-shader_parameter/contour_darken = 0.5
-shader_parameter/contour_flat_guard = 0.015
-shader_parameter/height_smooth = 2.0
-shader_parameter/gradient_span = 4.0
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(0.143, 0.143)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_marker_overlay"]
+shader = ExtResource("40_marker")
+shader_parameter/marker_color = Color(0.95, 0.15, 0.15, 1)
+shader_parameter/outline_color = Color(1, 1, 1, 1)
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_worldmap"]
 shader = ExtResource("70_style")
@@ -91,15 +79,6 @@ shader_parameter/color_ramp = ExtResource("10_wu0y7")
 shader_parameter/height_min = -40.0
 shader_parameter/height_max = 110.0
 shader_parameter/contour_interval = 10.0
-shader_parameter/contour_width_px = 0.6
-shader_parameter/major_every = 5.0
-shader_parameter/major_width_mult = 2.2
-shader_parameter/contour_dynamic = true
-shader_parameter/contour_color = Color(0.12, 0.09, 0.06, 1)
-shader_parameter/contour_darken = 0.5
-shader_parameter/contour_flat_guard = 0.015
-shader_parameter/height_smooth = 2.0
-shader_parameter/gradient_span = 4.0
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(1, 1)
 
@@ -162,12 +141,6 @@ shape = SubResource("CapsuleShape3D_player")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
 mesh = SubResource("CapsuleMesh_player")
 
-[node name="Marker" type="MeshInstance3D" parent="Player/Body" unique_id=2142907316]
-transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 4, 0)
-layers = 1024
-material_override = SubResource("ShaderMaterial_marker")
-mesh = SubResource("QuadMesh_marker")
-
 [node name="CameraPivot" type="SpringArm3D" parent="Player" unique_id=82672783]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 spring_length = 6.0
@@ -177,7 +150,7 @@ cull_mask = 1047551
 
 [node name="Hud" type="CanvasLayer" parent="." unique_id=1778174740]
 
-[node name="MapUi" type="Control" parent="Hud" unique_id=956150903 node_paths=PackedStringArray("MapViewport", "Minimap", "WorldMapImage", "WorldMapRoot", "Player")]
+[node name="MapUi" type="Control" parent="Hud" unique_id=956150903 node_paths=PackedStringArray("MapViewport", "Minimap", "WorldMapImage", "WorldMapRoot", "Player", "MinimapContours", "WorldMapContours", "MinimapMarker", "WorldMapMarker", "PlayerBody")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -191,9 +164,15 @@ Minimap = NodePath("Minimap")
 WorldMapImage = NodePath("WorldMap/WorldMapImage")
 WorldMapRoot = NodePath("WorldMap")
 Player = NodePath("../../Player")
+MinimapContours = NodePath("Minimap/Contours")
+WorldMapContours = NodePath("WorldMap/WorldMapImage/Contours")
+MinimapMarker = NodePath("Minimap/Marker")
+WorldMapMarker = NodePath("WorldMap/WorldMapImage/Marker")
+PlayerBody = NodePath("../../Player/Body")
 
 [node name="Minimap" type="ColorRect" parent="Hud/MapUi" unique_id=1261521365]
 material = SubResource("ShaderMaterial_minimap")
+clip_contents = true
 layout_mode = 0
 anchor_left = 1.0
 anchor_right = 1.0
@@ -201,6 +180,24 @@ offset_left = -276.0
 offset_top = 20.0
 offset_right = -20.0
 offset_bottom = 276.0
+mouse_filter = 2
+
+[node name="Contours" type="Control" parent="Hud/MapUi/Minimap" unique_id=730010001]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("72_contour")
+ColorRamp = ExtResource("10_wu0y7")
+
+[node name="Marker" type="ColorRect" parent="Hud/MapUi/Minimap" unique_id=730020001]
+material = SubResource("ShaderMaterial_marker_overlay")
+layout_mode = 0
+offset_right = 24.0
+offset_bottom = 24.0
 mouse_filter = 2
 
 [node name="WorldMap" type="ColorRect" parent="Hud/MapUi" unique_id=2138920796]
@@ -213,7 +210,26 @@ color = Color(0, 0, 0, 0.6)
 
 [node name="WorldMapImage" type="ColorRect" parent="Hud/MapUi/WorldMap" unique_id=819776301]
 material = SubResource("ShaderMaterial_worldmap")
+clip_contents = true
 layout_mode = 0
 offset_right = 900.0
 offset_bottom = 900.0
+mouse_filter = 2
+
+[node name="Contours" type="Control" parent="Hud/MapUi/WorldMap/WorldMapImage" unique_id=730010002]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("72_contour")
+ColorRamp = ExtResource("10_wu0y7")
+
+[node name="Marker" type="ColorRect" parent="Hud/MapUi/WorldMap/WorldMapImage" unique_id=730020002]
+material = SubResource("ShaderMaterial_marker_overlay")
+layout_mode = 0
+offset_right = 24.0
+offset_bottom = 24.0
 mouse_filter = 2

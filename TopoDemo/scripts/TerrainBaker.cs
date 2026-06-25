@@ -1,6 +1,6 @@
 using Godot;
 
-namespace TopographicMap.TopoDemo.Tools;
+namespace TopographicMap.TopoDemo;
 
 // Edit-time command-line tool. From the repo root:
 //   godot --headless --path . --script res://TopoDemo/scripts/tools/TerrainBaker.cs
@@ -12,8 +12,12 @@ public partial class TerrainBaker : MainLoop
 {
     private const float WorldSize = 1536f;
     private const float Half = WorldSize * 0.5f; // 768
-    private const int TextureRes = 512;          // heightmap texels
-    private const int CollisionGrid = 513;       // verts; cells span the world after the matching node scale (WorldSize / (CollisionGrid - 1) = 3 units, scale (3,1,3))
+    private const int TextureRes = 512; // heightmap texels
+
+    private const int
+        CollisionGrid =
+            513; // verts; cells span the world after the matching node scale (WorldSize / (CollisionGrid - 1) = 3 units, scale (3,1,3))
+
     private const float MinHeight = -40f;
     private const float MaxHeight = 110f;
 
@@ -45,16 +49,17 @@ public partial class TerrainBaker : MainLoop
             float wx = (tx + 0.5f) / TextureRes * WorldSize - Half;
             float wz = (ty + 0.5f) / TextureRes * WorldSize - Half;
             float normalized = Mathf.Clamp((SampleHeight(wx, wz) - MinHeight) / (MaxHeight - MinHeight), 0f, 1f);
-            image.SetPixel(tx, ty, new Color(normalized, 0f, 0f));
+            image.SetPixel(tx, ty, new(normalized, 0f, 0f));
         }
-        Error error = image.SaveExr(ProjectSettings.GlobalizePath(HeightmapPath), grayscale: true);
+
+        var error = image.SaveExr(ProjectSettings.GlobalizePath(HeightmapPath), true);
         GD.Print($"Heightmap EXR: {error} -> {HeightmapPath} ({TextureRes}x{TextureRes})");
     }
 
     private void BakeCollision()
     {
         // Collision HeightMapShape3D, heights in world units, same field as the heightmap.
-        var data = new float[CollisionGrid * CollisionGrid];
+        float[] data = new float[CollisionGrid * CollisionGrid];
         float cell = WorldSize / (CollisionGrid - 1); // world units between grid points after the node scale
         float minSeen = float.MaxValue;
         float maxSeen = float.MinValue;
@@ -74,13 +79,14 @@ public partial class TerrainBaker : MainLoop
             maxSeen = Mathf.Max(maxSeen, height);
             if (height < 0f) below++;
         }
+
         var shape = new HeightMapShape3D
         {
             MapWidth = CollisionGrid,
             MapDepth = CollisionGrid,
             MapData = data
         };
-        Error error = ResourceSaver.Save(shape, CollisionPath);
+        var error = ResourceSaver.Save(shape, CollisionPath);
         float waterPct = 100f * below / (CollisionGrid * CollisionGrid);
         GD.Print($"Collision: {error} -> {CollisionPath} ({CollisionGrid}x{CollisionGrid})");
         GD.Print($"Height range: {minSeen:0.0}..{maxSeen:0.0}  water coverage: {waterPct:0.0}%");
@@ -88,7 +94,7 @@ public partial class TerrainBaker : MainLoop
 
     private void BuildNoises()
     {
-        _continent = new FastNoiseLite
+        _continent = new()
         {
             Seed = 1337,
             NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
@@ -102,7 +108,7 @@ public partial class TerrainBaker : MainLoop
         // Ridged fractal for the massifs. Few octaves and a low frequency keep the
         // ridges big and smooth, so the contours form broad flowing ripples rather
         // than many spotty little peaks.
-        _ridge = new FastNoiseLite
+        _ridge = new()
         {
             Seed = 1539,
             NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
@@ -114,7 +120,7 @@ public partial class TerrainBaker : MainLoop
         };
         // Low-frequency, domain-warped mask that selects a few large regions to become
         // mountain massifs, leaving broad smooth lowlands between them.
-        _mountainMask = new FastNoiseLite
+        _mountainMask = new()
         {
             Seed = 1640,
             NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
@@ -127,7 +133,7 @@ public partial class TerrainBaker : MainLoop
         };
         // Higher-frequency warp used to break up the lake shoreline and river path
         // so they read as organic rather than a perfect circle or a clean sine.
-        _warp = new FastNoiseLite
+        _warp = new()
         {
             Seed = 1741,
             NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
@@ -145,7 +151,7 @@ public partial class TerrainBaker : MainLoop
         float nx = wx / Half; // -1..1
         float nz = wz / Half; // -1..1
 
-        float coast = (nx - nz) * 0.5f;             // -1 ocean corner .. +1 inland
+        float coast = (nx - nz) * 0.5f; // -1 ocean corner .. +1 inland
         float cont = _continent.GetNoise2D(wx, wz); // smooth, domain-warped large relief
 
         // Small ocean only in the far SW corner; strong land bias keeps water minimal.
@@ -174,8 +180,8 @@ public partial class TerrainBaker : MainLoop
         // vary along its length, and it fades near the massifs so the river weaves
         // between the mountains instead of slotting straight through one.
         float meander = _warp.GetNoise2D(800f, wz * 0.22f) * 70f
-                      + _warp.GetNoise2D(1200f, wz * 0.07f) * 50f
-                      + Mathf.Sin(wz * 0.006f) * 35f;
+                        + _warp.GetNoise2D(1200f, wz * 0.07f) * 50f
+                        + Mathf.Sin(wz * 0.006f) * 35f;
         float riverX = -10f + meander;
         float valleyWidth = 78f + _warp.GetNoise2D(wz, 300f) * 22f;
         float across = Mathf.Clamp(Mathf.Abs(wx - riverX) / valleyWidth, 0f, 1f);

@@ -26,6 +26,19 @@ public partial class MapUi : Control
     [Export] public float MaxZoom = 6.0f;
     [Export] public float ZoomStep = 1.15f;
 
+    [Export] public ContourLayer MinimapContours;
+    [Export] public ContourLayer WorldMapContours;
+    [Export] public float HeightMin = -40.0f;
+    [Export] public float HeightMax = 110.0f;
+    [Export] public float ContourInterval = 10.0f;
+    [Export] public int MajorEvery = 5;
+    [Export] public int ContourResolution = 2048;
+
+    [Export] public Control MinimapMarker;
+    [Export] public Control WorldMapMarker;
+    [Export] public Node3D PlayerBody;
+    [Export] public float MarkerScreenSize = 24.0f;
+
     private ShaderMaterial _minimapMat;
     private ShaderMaterial _worldMat;
 
@@ -43,6 +56,39 @@ public partial class MapUi : Control
         _worldMat.SetShaderParameter("height_buffer", heightBuffer);
 
         WorldMapRoot.Visible = false;
+
+        SetupMarker(MinimapMarker);
+        SetupMarker(WorldMapMarker);
+
+        _ = BuildContoursAsync();
+    }
+
+    private void SetupMarker(Control marker)
+    {
+        marker.Size = new(MarkerScreenSize, MarkerScreenSize);
+        marker.PivotOffset = marker.Size * 0.5f;
+    }
+
+    // Player heading as a Control rotation. Body yaw is rotation about Y; on the
+    // top-down map, screen rotation runs opposite world yaw. Flip the sign if the
+    // arrow points the wrong way.
+    private float MarkerRotation() => -PlayerBody.GlobalRotation.Y;
+
+    // Render the height buffer once, read it back, and build the contour field.
+    private async System.Threading.Tasks.Task BuildContoursAsync()
+    {
+        MapViewport.RenderTargetUpdateMode = SubViewport.UpdateMode.Once;
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+        await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
+
+        var image = MapViewport.GetTexture().GetImage();
+        var field = ContourExtractor.Build(
+            image, HeightMin, HeightMax, ContourInterval, MajorEvery, ContourResolution);
+
+        MinimapContours.Field = field;
+        WorldMapContours.Field = field;
+        MinimapContours.QueueRedraw();
+        WorldMapContours.QueueRedraw();
     }
 
     public override void _Process(double delta)
@@ -120,6 +166,11 @@ public partial class MapUi : Control
         float span = MinimapWorldSpan / TerrainSize;
         _minimapMat.SetShaderParameter("window_center", WorldToUv(Player.GlobalPosition));
         _minimapMat.SetShaderParameter("window_span", new Vector2(span, span));
+        MinimapContours.SetWindow(WorldToUv(Player.GlobalPosition), span);
+
+        // The minimap is always centered on the player, so the marker sits at center.
+        MinimapMarker.Position = Minimap.Size * 0.5f - MinimapMarker.Size * 0.5f;
+        MinimapMarker.Rotation = MarkerRotation();
     }
 
     // Keep the world map a centered square sized to the shorter screen dimension.
@@ -135,6 +186,16 @@ public partial class MapUi : Control
         float span = WindowSpan();
         _worldMat.SetShaderParameter("window_center", _panUv);
         _worldMat.SetShaderParameter("window_span", new Vector2(span, span));
+        WorldMapContours.SetWindow(_panUv, span);
+
+        // Place the marker at the player's position within the current window; hide
+        // it when the player is outside the visible area.
+        var rel = (WorldToUv(Player.GlobalPosition) - _panUv) / span + new Vector2(0.5f, 0.5f);
+        bool onMap = rel.X is >= 0.0f and <= 1.0f && rel.Y is >= 0.0f and <= 1.0f;
+        WorldMapMarker.Visible = onMap;
+        if (!onMap) return;
+        WorldMapMarker.Position = rel * WorldMapImage.Size - WorldMapMarker.Size * 0.5f;
+        WorldMapMarker.Rotation = MarkerRotation();
     }
 
     // Fraction of the world the world-map window spans at the current zoom.
@@ -146,8 +207,8 @@ public partial class MapUi : Control
     // Zoom while keeping the world point under screenPos fixed on screen.
     private void ZoomAt(Vector2 screenPos, float factor)
     {
-        Vector2 screenUv = (screenPos - WorldMapImage.Position) / WorldMapImage.Size - new Vector2(0.5f, 0.5f);
-        Vector2 uvUnderCursor = _panUv + screenUv * WindowSpan();
+        var screenUv = (screenPos - WorldMapImage.Position) / WorldMapImage.Size - new Vector2(0.5f, 0.5f);
+        var uvUnderCursor = _panUv + screenUv * WindowSpan();
 
         _zoom = Mathf.Clamp(_zoom * factor, MinZoom, MaxZoom);
 
@@ -158,13 +219,13 @@ public partial class MapUi : Control
     private void ClampPan()
     {
         float half = WindowSpan() * 0.5f;
-        float lo = half;
         float hi = 1.0f - half;
-        if (lo > hi)
+        if (half > hi)
         {
             _panUv = new(0.5f, 0.5f);
             return;
         }
-        _panUv = new(Mathf.Clamp(_panUv.X, lo, hi), Mathf.Clamp(_panUv.Y, lo, hi));
+
+        _panUv = new(Mathf.Clamp(_panUv.X, half, hi), Mathf.Clamp(_panUv.Y, half, hi));
     }
 }

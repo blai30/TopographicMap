@@ -1,11 +1,9 @@
-shader_type spatial;
-render_mode unshaded, cull_disabled, blend_mix, depth_draw_never;
+shader_type canvas_item;
 
-// Flat directional marker drawn as an arrow inside a quad via UV math, with no
-// texture asset. Unshaded and transparent so it reads cleanly on top of the
-// topographic map. The quad lies flat in the XZ plane and inherits the player
-// body's yaw, so the arrow points where the player faces. This is the gdshader
-// for the second compositing step.
+// Flat directional arrow marker drawn inside a UI rect via signed-distance math,
+// no texture asset. The owning Control is rotated to the player's heading; this
+// shader just draws a centered arrow that points up in local space. Anti-aliased
+// with screen-space derivatives so it stays crisp at any marker size.
 
 uniform vec4 marker_color : source_color = vec4(0.95, 0.15, 0.15, 1.0);
 uniform vec4 outline_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
@@ -27,13 +25,11 @@ float sd_triangle(vec2 p, vec2 a, vec2 b, vec2 c) {
 
 void fragment() {
 	vec2 uv = UV - vec2(0.5);
-	// Arrow points toward -V (which maps to player forward after the flat quad
-	// rotation). Tip near top, base near bottom.
 	float dist = sd_triangle(uv, vec2(0.0, -0.42), vec2(0.30, 0.32), vec2(-0.30, 0.32));
-	float fill = 1.0 - smoothstep(0.0, 0.01, dist);
-	float outline = (1.0 - smoothstep(0.05, 0.07, dist)) - fill;
+	float edge = fwidth(dist) * 1.5;
+	float fill = 1.0 - smoothstep(0.0, edge, dist);
+	float outline = (1.0 - smoothstep(0.05, 0.05 + edge, dist)) - fill;
 	vec3 col = mix(outline_color.rgb, marker_color.rgb, fill);
 	float alpha = clamp(fill + outline, 0.0, 1.0);
-	ALBEDO = col;
-	ALPHA = alpha;
+	COLOR = vec4(col, alpha);
 }

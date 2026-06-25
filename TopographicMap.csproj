@@ -1,7 +1,12 @@
 <Project Sdk="Godot.NET.Sdk/4.7.0">
-  <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
-    <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
-    <EnableDynamicLoading>true</EnableDynamicLoading>
-  </PropertyGroup>
+    <PropertyGroup>
+        <TargetFramework>net8.0</TargetFramework>
+        <TargetFramework Condition=" '$(GodotTargetPlatform)' == 'android' ">net9.0</TargetFramework>
+        <EnableDynamicLoading>true</EnableDynamicLoading>
+    </PropertyGroup>
+    <ItemGroup>
+        <!-- The standalone test project under tests/ has its own entry point and links
+             the pure-C# sources directly; keep it out of the Godot game build. -->
+        <Compile Remove="tests/**/*.cs"/>
+    </ItemGroup>
 </Project>
