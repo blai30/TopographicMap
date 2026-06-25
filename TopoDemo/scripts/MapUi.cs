@@ -82,8 +82,15 @@ public partial class MapUi : Control
         await ToSignal(RenderingServer.Singleton, RenderingServer.SignalName.FramePostDraw);
 
         var image = MapViewport.GetTexture().GetImage();
-        var field = ContourExtractor.Build(
-            image, HeightMin, HeightMax, ContourInterval, MajorEvery, ContourResolution);
+        image.Convert(Image.Format.Rgbaf);
+        byte[] data = image.GetData();
+        int width = image.GetWidth();
+        int height = image.GetHeight();
+
+        // Marching Squares is pure C#; run it off the main thread so the one-time
+        // build does not stutter the game on startup.
+        var field = await System.Threading.Tasks.Task.Run(() => ContourExtractor.Build(
+            data, width, height, HeightMin, HeightMax, ContourInterval, MajorEvery, ContourResolution));
 
         MinimapContours.Field = field;
         WorldMapContours.Field = field;

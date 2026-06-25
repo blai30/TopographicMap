@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace TopographicMap;
 
@@ -22,51 +23,67 @@ public sealed class ContourField
     // Builds polylines for every interior contour level. The field is normalized
     // height (0..1); levels are derived from world heights so callers can keep
     // thinking in world units. A level is major when its index round(H/interval)
-    // is a multiple of majorEvery.
+    // is a multiple of majorEvery. Levels are independent, so they are extracted
+    // in parallel across CPU cores.
     public static ContourField Build(float[] field, float[] mask, int cols, int rows,
-        float heightMin, float heightMax, float interval, int majorEvery)
+        float heightMin, float heightMax, float interval, int majorEvery, float simplifyEpsilon = 0.00015f)
     {
         var result = new ContourField();
         float span = Math.Max(0.0001f, heightMax - heightMin);
 
         int firstIndex = (int)Math.Floor(heightMin / interval) + 1;
         int lastIndex = (int)Math.Ceiling(heightMax / interval) - 1;
-        for (int index = firstIndex; index <= lastIndex; index++)
+        int levelCount = lastIndex - firstIndex + 1;
+        if (levelCount <= 0)
         {
+            return result;
+        }
+
+        var perLevel = new List<ContourPolyline>[levelCount];
+        Parallel.For(0, levelCount, li =>
+        {
+            var polylines = new List<ContourPolyline>();
+            int index = firstIndex + li;
             float worldHeight = index * interval;
-            if (worldHeight <= heightMin || worldHeight >= heightMax)
+            if (worldHeight > heightMin && worldHeight < heightMax)
             {
-                continue;
-            }
+                float level = (worldHeight - heightMin) / span;
+                bool isMajor = majorEvery > 0 && index % majorEvery == 0;
 
-            float level = (worldHeight - heightMin) / span;
-            bool isMajor = majorEvery > 0 && index % majorEvery == 0;
-
-            var segments = MarchingSquares.ExtractSegments(field, mask, cols, rows, level);
-            var chains = MarchingSquares.ChainSegments(segments);
-            foreach (var chain in chains)
-            {
-                float minX = float.MaxValue, minY = float.MaxValue;
-                float maxX = float.MinValue, maxY = float.MinValue;
-                foreach (var point in chain)
+                var segments = MarchingSquares.ExtractSegments(field, mask, cols, rows, level);
+                var chains = MarchingSquares.ChainSegments(segments);
+                foreach (var rawChain in chains)
                 {
-                    minX = Math.Min(minX, point.X);
-                    minY = Math.Min(minY, point.Y);
-                    maxX = Math.Max(maxX, point.X);
-                    maxY = Math.Max(maxY, point.Y);
+                    var chain = MarchingSquares.Simplify(rawChain, simplifyEpsilon);
+                    float minX = float.MaxValue, minY = float.MaxValue;
+                    float maxX = float.MinValue, maxY = float.MinValue;
+                    foreach (var point in chain)
+                    {
+                        minX = Math.Min(minX, point.X);
+                        minY = Math.Min(minY, point.Y);
+                        maxX = Math.Max(maxX, point.X);
+                        maxY = Math.Max(maxY, point.Y);
+                    }
+
+                    polylines.Add(new()
+                    {
+                        Points = chain,
+                        Level = level,
+                        IsMajor = isMajor,
+                        MinX = minX,
+                        MinY = minY,
+                        MaxX = maxX,
+                        MaxY = maxY
+                    });
                 }
-
-                result.Polylines.Add(new()
-                {
-                    Points = chain,
-                    Level = level,
-                    IsMajor = isMajor,
-                    MinX = minX,
-                    MinY = minY,
-                    MaxX = maxX,
-                    MaxY = maxY
-                });
             }
+
+            perLevel[li] = polylines;
+        });
+
+        foreach (var polylines in perLevel)
+        {
+            result.Polylines.AddRange(polylines);
         }
 
         return result;

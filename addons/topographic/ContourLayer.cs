@@ -25,8 +25,16 @@ public partial class ContourLayer : Control
 
     public void SetWindow(Vector2 center, float span)
     {
+        span = Mathf.Max(span, 0.00001f);
+        // Skip redundant redraws: _Process drives this every frame, but the lines
+        // only need redrawing when the view actually moves.
+        if (_windowCenter.IsEqualApprox(center) && Mathf.IsEqualApprox(_windowSpan, span))
+        {
+            return;
+        }
+
         _windowCenter = center;
-        _windowSpan = Mathf.Max(span, 0.00001f);
+        _windowSpan = span;
         QueueRedraw();
     }
 

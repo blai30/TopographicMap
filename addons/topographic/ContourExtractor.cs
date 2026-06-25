@@ -1,25 +1,19 @@
 using System;
-using Godot;
 
 namespace TopographicMap;
 
-// Turns a height-buffer Image (R = normalized height, G = coverage mask) into a
-// ContourField. Reads the raw image bytes once (converted to 32-bit float RGBA)
-// rather than calling GetPixel per texel, so even a full-resolution readback is
-// fast. Optionally box-downsamples to maxResolution; at full resolution the line
+// Turns the raw bytes of a height-buffer image (Rgbaf: R = normalized height,
+// G = coverage mask, 16 bytes per pixel) into a ContourField. Pure C# with no
+// Godot types, so the heavy Marching Squares pass can run on a background thread.
+// Optionally box-downsamples to maxResolution; at full resolution the line
 // crossings line up with the per-pixel tint so band edges do not bleed.
 public static class ContourExtractor
 {
-    public static ContourField Build(Image image, float heightMin, float heightMax,
-        float interval, int majorEvery, int maxResolution)
+    public static ContourField Build(byte[] data, int srcW, int srcH, float heightMin,
+        float heightMax, float interval, int majorEvery, int maxResolution)
     {
-        image.Convert(Image.Format.Rgbaf);
-        byte[] data = image.GetData();
-        int srcW = image.GetWidth();
-        int srcH = image.GetHeight();
         const int stride = 16; // bytes per pixel in Rgbaf (4 channels x 4 bytes)
-
-        int step = Mathf.Max(1, Mathf.CeilToInt((float)Mathf.Max(srcW, srcH) / maxResolution));
+        int step = Math.Max(1, (Math.Max(srcW, srcH) + maxResolution - 1) / maxResolution);
         int cols = (srcW + step - 1) / step;
         int rows = (srcH + step - 1) / step;
 

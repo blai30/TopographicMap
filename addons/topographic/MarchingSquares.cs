@@ -193,4 +193,73 @@ public static class MarchingSquares
             return -1;
         }
     }
+
+    // Ramer-Douglas-Peucker simplification. Drops points that lie within epsilon
+    // (normalized units) of the straight line between kept neighbors, cutting the
+    // dense per-cell point count with no visible change. Iterative to avoid deep
+    // recursion on long polylines.
+    public static List<ContourPoint> Simplify(List<ContourPoint> points, float epsilon)
+    {
+        int n = points.Count;
+        if (n < 3)
+        {
+            return new(points);
+        }
+
+        bool[] keep = new bool[n];
+        keep[0] = true;
+        keep[n - 1] = true;
+        float eps2 = epsilon * epsilon;
+        var stack = new Stack<(int First, int Last)>();
+        stack.Push((0, n - 1));
+        while (stack.Count > 0)
+        {
+            (int first, int last) = stack.Pop();
+            float maxDist2 = 0f;
+            int index = -1;
+            for (int i = first + 1; i < last; i++)
+            {
+                float d2 = PointSegmentDistanceSq(points[i], points[first], points[last]);
+                if (d2 > maxDist2)
+                {
+                    maxDist2 = d2;
+                    index = i;
+                }
+            }
+
+            if (index != -1 && maxDist2 > eps2)
+            {
+                keep[index] = true;
+                stack.Push((first, index));
+                stack.Push((index, last));
+            }
+        }
+
+        var result = new List<ContourPoint>();
+        for (int i = 0; i < n; i++)
+        {
+            if (keep[i])
+            {
+                result.Add(points[i]);
+            }
+        }
+
+        return result;
+    }
+
+    private static float PointSegmentDistanceSq(ContourPoint p, ContourPoint a, ContourPoint b)
+    {
+        float abx = b.X - a.X;
+        float aby = b.Y - a.Y;
+        float apx = p.X - a.X;
+        float apy = p.Y - a.Y;
+        float ab2 = abx * abx + aby * aby;
+        float t = ab2 > 1e-12f ? (apx * abx + apy * aby) / ab2 : 0f;
+        t = Math.Clamp(t, 0f, 1f);
+        float cx = a.X + abx * t;
+        float cy = a.Y + aby * t;
+        float dx = p.X - cx;
+        float dy = p.Y - cy;
+        return dx * dx + dy * dy;
+    }
 }

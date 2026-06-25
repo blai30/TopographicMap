@@ -58,5 +58,14 @@ Check(levelsOk, "levels normalized within (0,1)");
 bool bboxOk = fieldData.Polylines.TrueForAll(p => p.MaxX >= p.MinX && p.MaxY >= p.MinY);
 Check(bboxOk, "bounding boxes valid");
 
+// Simplify: collinear points collapse to the two endpoints, a corner is kept.
+var line = new List<ContourPoint>
+{
+    new(0f, 0f), new(0.25f, 0f), new(0.5f, 0f), new(0.75f, 0f), new(1f, 0f),
+};
+Check(MarchingSquares.Simplify(line, 0.001f).Count == 2, "collinear polyline simplifies to 2 points");
+var corner = new List<ContourPoint> { new(0f, 0f), new(0.5f, 0.5f), new(1f, 0f) };
+Check(MarchingSquares.Simplify(corner, 0.001f).Count == 3, "corner point is kept");
+
 Console.WriteLine(failures == 0 ? "ALL PASS" : failures + " FAILED");
 return failures == 0 ? 0 : 1;
