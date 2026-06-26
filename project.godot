@@ -12,7 +12,7 @@ config_version=5
 
 config/name="Topographic Map"
 config/description="Depth-based topographic map post-process on an orthographic top-down camera."
-run/main_scene="res://TopoDemo/scenes/Demo.tscn"
+run/main_scene="res://TopoDemo/scenes/DemoMinimap.tscn"
 config/features=PackedStringArray("4.7", "C#", "Forward Plus")
 config/icon="res://icon.svg"
 

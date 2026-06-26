@@ -4,200 +4,164 @@ namespace TopographicMap.TopoDemo;
 
 // Edit-time command-line tool. From the repo root:
 //   godot --headless --path . --script res://TopoDemo/scripts/TerrainBaker.cs
-// Bakes the showcase continent into two committed static assets (a normalized
-// heightmap EXR and a HeightMapShape3D collision .res), then quits. Never
-// referenced by the Demo scene or any autoload, so the shipped game contains no
+// Bakes every committed terrain asset, then quits:
+//   heightmap.exr + terrain_collision.res - the demo continent (used by the game)
+//   banner_heightmap.exr                  - rich terrain for DemoTerrain.tscn / the README shots
+// Never referenced by the game scene or any autoload, so the shipped game contains no
 // generator; only the baked outputs load at runtime.
 public partial class TerrainBaker : MainLoop
 {
     private const float WorldSize = 1536f;
     private const float Half = WorldSize * 0.5f; // 768
-    private const int TextureRes = 512; // heightmap texels
-
-    private const int
-        CollisionGrid =
-            513; // verts; cells span the world after the matching node scale (WorldSize / (CollisionGrid - 1) = 3 units, scale (3,1,3))
-
     private const float MinHeight = -40f;
     private const float MaxHeight = 110f;
 
+    private const int DemoRes = 512; // demo heightmap texels
+    private const int BannerRes = 1024; // banner heightmap texels (finer relief)
+    private const int CollisionGrid = 513; // verts; cell = WorldSize / (CollisionGrid - 1) = 3 units
+
     private const string HeightmapPath = "res://TopoDemo/assets/heightmap.exr";
     private const string CollisionPath = "res://TopoDemo/assets/terrain_collision.res";
-
-    private FastNoiseLite _continent;
-    private FastNoiseLite _ridge;
-    private FastNoiseLite _mountainMask;
-    private FastNoiseLite _warp;
+    private const string BannerPath = "res://TopoDemo/assets/banner_heightmap.exr";
 
     public override void _Initialize()
     {
-        BuildNoises();
-        BakeHeightmap();
+        BuildDemoNoise();
+        BakeHeightmap(HeightmapPath, DemoRes, DemoHeight);
         BakeCollision();
+
+        BuildBannerNoise();
+        BakeHeightmap(BannerPath, BannerRes, BannerHeight);
     }
 
     // Quit after the first frame; all work is done in _Initialize.
     public override bool _Process(double delta) => true;
 
-    private void BakeHeightmap()
+    // Shared heightmap bake: a single-channel EXR normalized 0..1 over [MinHeight, MaxHeight].
+    private static void BakeHeightmap(string path, int res, System.Func<float, float, float> sample)
     {
-        // Heightmap EXR, normalized 0..1 over [MinHeight, MaxHeight].
-        var image = Image.CreateEmpty(TextureRes, TextureRes, false, Image.Format.Rf);
-        for (int ty = 0; ty < TextureRes; ty++)
-        for (int tx = 0; tx < TextureRes; tx++)
+        var image = Image.CreateEmpty(res, res, false, Image.Format.Rf);
+        float minSeen = float.MaxValue, maxSeen = float.MinValue;
+        for (int ty = 0; ty < res; ty++)
+        for (int tx = 0; tx < res; tx++)
         {
-            float wx = (tx + 0.5f) / TextureRes * WorldSize - Half;
-            float wz = (ty + 0.5f) / TextureRes * WorldSize - Half;
-            float normalized = Mathf.Clamp((SampleHeight(wx, wz) - MinHeight) / (MaxHeight - MinHeight), 0f, 1f);
+            float wx = (tx + 0.5f) / res * WorldSize - Half;
+            float wz = (ty + 0.5f) / res * WorldSize - Half;
+            float height = sample(wx, wz);
+            minSeen = Mathf.Min(minSeen, height);
+            maxSeen = Mathf.Max(maxSeen, height);
+            float normalized = Mathf.Clamp((height - MinHeight) / (MaxHeight - MinHeight), 0f, 1f);
             image.SetPixel(tx, ty, new(normalized, 0f, 0f));
         }
 
-        var error = image.SaveExr(ProjectSettings.GlobalizePath(HeightmapPath), true);
-        GD.Print($"Heightmap EXR: {error} -> {HeightmapPath} ({TextureRes}x{TextureRes})");
+        var error = image.SaveExr(ProjectSettings.GlobalizePath(path), true);
+        GD.Print($"Baked {path} ({res}x{res}): {error}  height {minSeen:0.0}..{maxSeen:0.0}");
     }
 
     private void BakeCollision()
     {
-        // Collision HeightMapShape3D, heights in world units, same field as the heightmap.
+        // Collision HeightMapShape3D, heights in world units, same field as the demo heightmap.
         float[] data = new float[CollisionGrid * CollisionGrid];
         const float cell = WorldSize / (CollisionGrid - 1); // world units between grid points after the node scale
-        float minSeen = float.MaxValue;
-        float maxSeen = float.MinValue;
         int below = 0;
         for (int iz = 0; iz < CollisionGrid; iz++)
         for (int ix = 0; ix < CollisionGrid; ix++)
         {
             // Sample at the world position each grid point lands on after the uniform
-            // (cell,cell,cell) node scale. Heights are stored divided by the cell size
-            // so the uniform scale (needed to keep the CollisionShape3D happy) does not
-            // stretch them: storedHeight * cell == true world height.
+            // (cell,cell,cell) node scale. Heights are stored divided by the cell size so the
+            // uniform scale (needed to keep the CollisionShape3D happy) does not stretch them:
+            // storedHeight * cell == true world height.
             float wx = (ix - (CollisionGrid - 1) * 0.5f) * cell;
             float wz = (iz - (CollisionGrid - 1) * 0.5f) * cell;
-            float height = SampleHeight(wx, wz);
+            float height = DemoHeight(wx, wz);
             data[iz * CollisionGrid + ix] = height / cell;
-            minSeen = Mathf.Min(minSeen, height);
-            maxSeen = Mathf.Max(maxSeen, height);
             if (height < 0f) below++;
         }
 
-        var shape = new HeightMapShape3D
-        {
-            MapWidth = CollisionGrid,
-            MapDepth = CollisionGrid,
-            MapData = data
-        };
+        var shape = new HeightMapShape3D { MapWidth = CollisionGrid, MapDepth = CollisionGrid, MapData = data };
         var error = ResourceSaver.Save(shape, CollisionPath);
         float waterPct = 100f * below / (CollisionGrid * CollisionGrid);
-        GD.Print($"Collision: {error} -> {CollisionPath} ({CollisionGrid}x{CollisionGrid})");
-        GD.Print($"Height range: {minSeen:0.0}..{maxSeen:0.0}  water coverage: {waterPct:0.0}%");
+        GD.Print($"Collision: {error} -> {CollisionPath} ({CollisionGrid}x{CollisionGrid})  water {waterPct:0.0}%");
     }
 
-    private void BuildNoises()
+    // ---- Demo continent: the playable terrain. Smooth, broadly rolling land (single-octave
+    // simplex, no ridged noise or domain warp, so the map contours read as smooth ripples),
+    // with a small ocean in the far SW corner, a smooth inland lake, and a flattened spawn.
+    private FastNoiseLite _continent, _relief;
+
+    private void BuildDemoNoise()
     {
         _continent = new()
         {
-            Seed = 1337,
-            NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
-            FractalType = FastNoiseLite.FractalTypeEnum.Fbm,
-            FractalOctaves = 4,
-            Frequency = 0.0016f,
-            DomainWarpEnabled = true,
-            DomainWarpAmplitude = 40f,
-            DomainWarpFrequency = 0.005f
+            Seed = 1337, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+            FractalType = FastNoiseLite.FractalTypeEnum.None, Frequency = 0.0016f
         };
-        // Ridged fractal for the massifs. Few octaves and a low frequency keep the
-        // ridges big and smooth, so the contours form broad flowing ripples rather
-        // than many spotty little peaks.
-        _ridge = new()
+        _relief = new()
         {
-            Seed = 1539,
-            NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
-            FractalType = FastNoiseLite.FractalTypeEnum.Ridged,
-            FractalOctaves = 3,
-            FractalGain = 0.4f,
-            FractalLacunarity = 1.9f,
-            Frequency = 0.0019f
-        };
-        // Low-frequency, domain-warped mask that selects a few large regions to become
-        // mountain massifs, leaving broad smooth lowlands between them.
-        _mountainMask = new()
-        {
-            Seed = 1640,
-            NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
-            FractalType = FastNoiseLite.FractalTypeEnum.Fbm,
-            FractalOctaves = 3,
-            Frequency = 0.001f,
-            DomainWarpEnabled = true,
-            DomainWarpAmplitude = 80f,
-            DomainWarpFrequency = 0.004f
-        };
-        // Higher-frequency warp used to break up the lake shoreline and river path
-        // so they read as organic rather than a perfect circle or a clean sine.
-        _warp = new()
-        {
-            Seed = 1741,
-            NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
-            FractalType = FastNoiseLite.FractalTypeEnum.Fbm,
-            FractalOctaves = 3,
-            Frequency = 0.02f
+            Seed = 1539, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+            FractalType = FastNoiseLite.FractalTypeEnum.None, Frequency = 0.0032f
         };
     }
 
-    // World height in units for a world XZ position. The land is mostly broad, smooth
-    // lowland (few, widely-spaced contours) with a handful of big rippling mountain
-    // massifs; a small ocean sits in the far SW corner, plus an inland lake and river.
-    private float SampleHeight(float wx, float wz)
+    private float DemoHeight(float wx, float wz)
     {
         float nx = wx / Half; // -1..1
-        float nz = wz / Half; // -1..1
+        float nz = wz / Half;
 
         float coast = (nx - nz) * 0.5f; // -1 ocean corner .. +1 inland
-        float cont = _continent.GetNoise2D(wx, wz); // smooth, domain-warped large relief
+        float cont = _continent.GetNoise2D(wx, wz);
 
-        // Small ocean only in the far SW corner; strong land bias keeps water minimal.
         float land = coast * 0.85f + cont * 0.4f + 0.6f;
         float shore = Mathf.SmoothStep(-0.2f, 0.25f, land); // 0 open ocean, 1 inland
 
-        // Broad, smooth base relief: large gentle swells so the lowlands carry only a
-        // few widely-spaced contours instead of many little islands.
         float height = Mathf.Lerp(MinHeight, 16f, shore);
-        height += cont * 28f * shore;
 
-        // Big rippling mountain massifs: a low-frequency mask picks a few large regions
-        // across the land; smooth ridged noise stacks broad concentric ripples inside them.
-        float massif = Mathf.SmoothStep(0.38f, 0.66f, _mountainMask.GetNoise2D(wx, wz) * 0.5f + 0.5f);
-        float ridged = Mathf.Pow(_ridge.GetNoise2D(wx, wz) * 0.5f + 0.5f, 1.1f);
-        height += massif * ridged * 85f * shore;
+        // Smooth rolling relief on the land: two single-octave simplex scales blended, biased
+        // upward so most of the land sits above sea level (a coastline, not a flooded map).
+        float relief = cont * 0.6f + _relief.GetNoise2D(wx, wz) * 0.4f;
+        height += (relief + 0.28f) * 52f * shore;
 
-        // Inland lake: a noisy radius so the shoreline wobbles instead of being a circle.
-        float lakeDist = Distance(wx, wz, 180f, 40f) + _warp.GetNoise2D(wx, wz) * 32f;
-        float lake = 1f - Mathf.SmoothStep(45f, 80f, lakeDist);
-        height = Mathf.Lerp(height, -12f, lake * (1f - massif));
+        // A smooth inland lake basin.
+        float lake = 1f - Mathf.SmoothStep(45f, 95f, Distance(wx, wz, 170f, 30f));
+        height = Mathf.Lerp(height, -10f, lake * shore * 0.85f);
 
-        // River valley: a smooth, rounded depression along a meandering path rather
-        // than a flat-bottomed trench. The bed eases down to the centre as a bowl and
-        // dips below sea level in the lowlands to read as water; its width and depth
-        // vary along its length, and it fades near the massifs so the river weaves
-        // between the mountains instead of slotting straight through one.
-        float meander = _warp.GetNoise2D(800f, wz * 0.22f) * 70f + _warp.GetNoise2D(1200f, wz * 0.07f) * 50f +
-                        Mathf.Sin(wz * 0.006f) * 35f;
-        float riverX = -10f + meander;
-        float valleyWidth = 78f + _warp.GetNoise2D(wz, 300f) * 22f;
-        float across = Mathf.Clamp(Mathf.Abs(wx - riverX) / valleyWidth, 0f, 1f);
-        float valley = (1f - across) * (1f - across); // smooth rounded bowl, no flat floor
-        float depth = 44f + _warp.GetNoise2D(1500f, wz * 0.3f) * 10f;
-        height -= valley * depth * shore * (1f - massif * 0.5f);
-
+        // Flatten the spawn area so the player starts on gentle ground.
         float spawn = 1f - Mathf.SmoothStep(0f, 22f, Distance(wx, wz, 120f, 130f));
         height = Mathf.Lerp(height, Mathf.Max(height, 12f), spawn);
 
         return Mathf.Clamp(height, MinHeight, MaxHeight);
     }
 
+    // ---- Banner terrain (used only by DemoTerrain.tscn and the README screenshots) ----
+    // Multi-scale smooth fbm (SimplexSmooth, no ridged noise, no domain warp): a few octaves
+    // give large massifs with smaller hills nested inside, so the terrain naturally carries
+    // lots of smooth concentric contours. Ridged noise and domain warp are what folded the
+    // contours into jagged zigzags before, so neither is used.
+    private FastNoiseLite _bSwell;
+
+    private void BuildBannerNoise()
+    {
+        _bSwell = new()
+        {
+            Seed = 7001, NoiseType = FastNoiseLite.NoiseTypeEnum.SimplexSmooth,
+            FractalType = FastNoiseLite.FractalTypeEnum.Fbm, FractalOctaves = 3, FractalGain = 0.46f,
+            FractalLacunarity = 2.0f, Frequency = 0.0036f
+        };
+    }
+
+    // Smooth rolling relief over a full-ish height span, so the frame carries many smooth
+    // concentric contour rings. The gentle banner colors come from the soft elevation_gradient,
+    // not from squashing the height range, so the contour count stays high.
+    private float BannerHeight(float wx, float wz)
+    {
+        float h = _bSwell.GetNoise2D(wx, wz);
+        float n = Mathf.Clamp(h * 0.92f + 0.5f, 0f, 1f);
+        return Mathf.Lerp(MinHeight, MaxHeight, n);
+    }
+
     private static float Distance(float ax, float az, float bx, float bz)
     {
-        float dx = ax - bx;
-        float dz = az - bz;
+        float dx = ax - bx, dz = az - bz;
         return Mathf.Sqrt(dx * dx + dz * dz);
     }
 }

@@ -1,0 +1,79 @@
+[gd_scene format=3 uid="uid://c7p4w8kvi3pld"]
+
+[ext_resource type="Shader" uid="uid://df2f8x2eh3r6b" path="res://TopoDemo/shaders/terrain.gdshader" id="1_terrain"]
+[ext_resource type="Texture2D" uid="uid://jp35jp7jyiq" path="res://TopoDemo/assets/banner_heightmap.exr" id="2_heightmap"]
+[ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic.gdshader" id="3_topo"]
+[ext_resource type="Texture2D" uid="uid://cfyxwss4kt6j0" path="res://addons/topographic/gradients/hypsometric_classic.tres" id="4_gradient"]
+[ext_resource type="Script" uid="uid://bdtb0iw8an1bu" path="res://TopoDemo/scripts/DemoTerrain.cs" id="5_script"]
+
+[sub_resource type="ShaderMaterial" id="TerrainMat"]
+render_priority = 0
+shader = ExtResource("1_terrain")
+shader_parameter/heightmap = ExtResource("2_heightmap")
+shader_parameter/terrain_size = 1536.0
+shader_parameter/heightmap_resolution = 1024.0
+shader_parameter/min_height = -40.0
+shader_parameter/max_height = 110.0
+shader_parameter/sand_color = Color(0.78, 0.72, 0.5, 1)
+shader_parameter/grass_color = Color(0.36, 0.52, 0.27, 1)
+shader_parameter/rock_color = Color(0.45, 0.4, 0.34, 1)
+shader_parameter/snow_color = Color(0.95, 0.95, 0.97, 1)
+
+[sub_resource type="PlaneMesh" id="TerrainMesh"]
+size = Vector2(1536, 1536)
+subdivide_width = 1023
+subdivide_depth = 1023
+
+[sub_resource type="Environment" id="EnvMap"]
+background_mode = 1
+
+[sub_resource type="ShaderMaterial" id="TopoMat"]
+shader = ExtResource("3_topo")
+shader_parameter/elevation_gradient = ExtResource("4_gradient")
+shader_parameter/height_min = -40.0
+shader_parameter/height_max = 110.0
+shader_parameter/contour_interval = 10.0
+shader_parameter/lines_per_major = 5.0
+shader_parameter/minor_line_width_px = 1.0
+shader_parameter/major_line_width_px = 1.7
+shader_parameter/line_color = Color(1, 1, 1, 1)
+shader_parameter/line_color_from_gradient = 1.0
+shader_parameter/line_gradient_lightness = -0.4
+shader_parameter/line_gradient_shift = 0.0
+shader_parameter/window_center = Vector2(0.5, 0.5)
+shader_parameter/window_span = Vector2(0.7, 0.7)
+shader_parameter/px_per_uv = 1.0
+
+[node name="DemoTerrain" type="Node3D" unique_id=2048007341 node_paths=PackedStringArray("TerrainView", "TopDownCamera", "TopoRect")]
+script = ExtResource("5_script")
+TerrainView = NodePath("TerrainView")
+TopDownCamera = NodePath("TerrainView/TopDownCamera")
+TopoRect = NodePath("Display/TopoRect")
+
+[node name="Terrain" type="MeshInstance3D" parent="." unique_id=1618800042]
+layers = 2
+material_override = SubResource("TerrainMat")
+extra_cull_margin = 200.0
+mesh = SubResource("TerrainMesh")
+
+[node name="TerrainView" type="SubViewport" parent="." unique_id=91869656]
+use_hdr_2d = true
+size = Vector2i(2048, 2048)
+render_target_update_mode = 4
+
+[node name="TopDownCamera" type="Camera3D" parent="TerrainView" unique_id=762249807]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 200, 0)
+cull_mask = 2
+environment = SubResource("EnvMap")
+projection = 1
+size = 1536.0
+near = 80.0
+far = 245.0
+
+[node name="Display" type="CanvasLayer" parent="." unique_id=1727094471]
+
+[node name="TopoRect" type="ColorRect" parent="Display" unique_id=783792941]
+material = SubResource("TopoMat")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0

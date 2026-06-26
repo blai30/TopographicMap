@@ -4,7 +4,7 @@
 [ext_resource type="CompositorEffect" uid="uid://btxcwgfvxwdml" path="res://TopoDemo/assets/map_view_compositor_effect.tres" id="6_hqj3e"]
 [ext_resource type="Material" uid="uid://dqiaexa118y58" path="res://TopoDemo/assets/terrain_material.tres" id="7_terrainmat"]
 [ext_resource type="Texture2D" uid="uid://cbh6enbhl3vja" path="res://addons/topographic/gradients/blueprint.tres" id="8_47k30"]
-[ext_resource type="Shape3D" uid="uid://p2rky5bmk7dj" path="res://TopoDemo/assets/terrain_collision.res" id="8_terraincol"]
+[ext_resource type="Shape3D" uid="uid://w3o83dpea0if" path="res://TopoDemo/assets/terrain_collision.res" id="8_terraincol"]
 [ext_resource type="Texture2D" uid="uid://bk812lc2f2ueh" path="res://addons/topographic/gradients/sepia_vintage.tres" id="10_47k30"]
 [ext_resource type="Script" uid="uid://cb6kukq0i4na7" path="res://TopoDemo/scripts/PlayerController.cs" id="20_ypqk8"]
 [ext_resource type="Shader" uid="uid://c526piefpacph" path="res://addons/topographic/marker_overlay.gdshader" id="40_marker"]
@@ -140,7 +140,7 @@ near = 80.0
 far = 245.0
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=1101662163 node_paths=PackedStringArray("CameraPivot", "Body")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 120, 29.341757, 130)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 36.39908, 0)
 script = ExtResource("20_ypqk8")
 CameraPivot = NodePath("CameraPivot")
 Body = NodePath("Body")
