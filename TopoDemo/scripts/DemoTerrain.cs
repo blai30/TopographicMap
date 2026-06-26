@@ -21,15 +21,15 @@ public partial class DemoTerrain : Node3D
     private const float HeightMax = 110f;
     private const float Interval = 10f; // must match the compositor effect's ContourInterval
 
-    private static readonly string GradientDir = "res://addons/topographic/gradients/";
-    private static readonly string OutDir = "res://screenshots/";
+    private const string GradientDir = "res://addons/topographic/gradients/";
+    private const string OutDir = "res://screenshots/";
 
     // One image per preset (file name preset-<name>.png).
     private static readonly string[] Presets =
-    {
+    [
         "classic_ink", "sepia_vintage", "hypsometric_classic", "hypsometric_atlas",
         "matrix", "alpine", "nautical", "viridis", "heatmap", "magma", "blueprint", "grayscale"
-    };
+    ];
 
     private struct Shot
     {
@@ -39,7 +39,7 @@ public partial class DemoTerrain : Node3D
     }
 
     private TopographicCompositorEffect _effect;
-    private ShaderMaterial _mat;
+    private ShaderMaterial _material;
     private readonly List<Shot> _queue = [];
     private bool _viewMode;
     private bool _producerSeen;
@@ -50,29 +50,29 @@ public partial class DemoTerrain : Node3D
     {
         // Give this scene its own compositor effect so it never shares the demo's segment
         // texture. ContourInterval must match the material interval, or lines and bands drift.
-        _effect = new TopographicCompositorEffect { ContourInterval = Interval };
-        TopDownCamera.Compositor = new Compositor();
-        TopDownCamera.Compositor.CompositorEffects = new() { _effect };
+        _effect = new() { ContourInterval = Interval };
+        TopDownCamera.Compositor = new();
+        TopDownCamera.Compositor.CompositorEffects = [_effect];
 
-        _mat = (ShaderMaterial)TopoRect.Material;
-        _mat.SetShaderParameter("height_buffer", TerrainView.GetTexture());
-        _mat.SetShaderParameter("segments", _effect.SegmentTexture);
+        _material = (ShaderMaterial)TopoRect.Material;
+        _material.SetShaderParameter("height_buffer", TerrainView.GetTexture());
+        _material.SetShaderParameter("segments", _effect.SegmentTexture);
 
         // Keep the consumer hidden until the producer's first render, or it samples the
         // segment texture before its RID is live and trips a "set (1)" draw error.
         TopoRect.Visible = false;
 
-        var args = OS.GetCmdlineUserArgs();
+        string[] args = OS.GetCmdlineUserArgs();
         string mode = args.Length > 0 && args[0].Length > 0 ? args[0] : "";
 
         if (mode == "banner")
         {
-            DisplayServer.WindowSetSize(new Vector2I(2400, 960));
+            DisplayServer.WindowSetSize(new(2400, 960));
             _queue.Add(new() { Gradient = "classic_ink", Path = $"{OutDir}banner.png", Banner = true });
         }
         else if (mode == "presets")
         {
-            DisplayServer.WindowSetSize(new Vector2I(1024, 1024));
+            DisplayServer.WindowSetSize(new(1024, 1024));
             foreach (string preset in Presets)
             {
                 _queue.Add(new() { Gradient = preset, Path = $"{OutDir}preset-{preset}.png" });
@@ -98,12 +98,13 @@ public partial class DemoTerrain : Node3D
             TopoRect.Visible = true;
             if (_viewMode)
             {
-                StyleTile("hypsometric_classic", banner: false);
+                StyleTile("hypsometric_classic", false);
             }
             else
             {
                 ApplyShot(_queue[0]);
             }
+
             _frames = 0;
             return;
         }
@@ -111,7 +112,7 @@ public partial class DemoTerrain : Node3D
         if (_viewMode)
         {
             // Keep the window aspect-correct as the user resizes.
-            SetWindow(0.7f, banner: false);
+            SetWindow(0.7f, false);
             return;
         }
 
@@ -148,42 +149,51 @@ public partial class DemoTerrain : Node3D
     {
         var size = TopoRect.Size;
         float spanY = banner ? spanX * size.Y / Mathf.Max(size.X, 1f) : spanX;
-        _mat.SetShaderParameter("window_center", new Vector2(0.5f, 0.5f));
-        _mat.SetShaderParameter("window_span", new Vector2(spanX, spanY));
-        _mat.SetShaderParameter("px_per_uv", size.X / spanX);
+        _material.SetShaderParameter("window_center", new Vector2(0.5f, 0.5f));
+        _material.SetShaderParameter("window_span", new Vector2(spanX, spanY));
+        _material.SetShaderParameter("px_per_uv", size.X / spanX);
     }
 
     private void StyleTile(string gradient, bool banner)
     {
-        _mat.SetShaderParameter("elevation_gradient", GD.Load<Texture2D>($"{GradientDir}{gradient}.tres"));
-        _mat.SetShaderParameter("height_min", HeightMin);
-        _mat.SetShaderParameter("height_max", HeightMax);
-        _mat.SetShaderParameter("contour_interval", Interval);
-        _mat.SetShaderParameter("lines_per_major", 5.0f);
-        _mat.SetShaderParameter("minor_line_width_px", 1.0f);
-        _mat.SetShaderParameter("major_line_width_px", 1.7f);
+        _material.SetShaderParameter("elevation_gradient", GD.Load<Texture2D>($"{GradientDir}{gradient}.tres"));
+        _material.SetShaderParameter("height_min", HeightMin);
+        _material.SetShaderParameter("height_max", HeightMax);
+        _material.SetShaderParameter("contour_interval", Interval);
+        _material.SetShaderParameter("lines_per_major", 5.0f);
+        _material.SetShaderParameter("minor_line_width_px", 0.7f);
+        _material.SetShaderParameter("major_line_width_px", 1.1f);
 
         if (banner)
         {
             // Soft, light brown ink lines (the cartographic banner look).
-            _mat.SetShaderParameter("line_color", new Color(0.46f, 0.40f, 0.33f));
-            _mat.SetShaderParameter("line_color_from_gradient", 0.0f);
+            _material.SetShaderParameter("line_color", new Color(0.46f, 0.40f, 0.33f));
+            _material.SetShaderParameter("line_color_from_gradient", 0.0f);
         }
         else if (gradient == "blueprint")
         {
-            _mat.SetShaderParameter("line_color", new Color(0.95f, 0.96f, 1.0f));
-            _mat.SetShaderParameter("line_color_from_gradient", 0.0f);
+            _material.SetShaderParameter("line_color", new Color(0.95f, 0.96f, 1.0f));
+            _material.SetShaderParameter("line_color_from_gradient", 0.0f);
         }
         else if (gradient == "matrix")
         {
-            _mat.SetShaderParameter("line_color", new Color(0.35f, 1.0f, 0.45f));
-            _mat.SetShaderParameter("line_color_from_gradient", 0.0f);
+            _material.SetShaderParameter("line_color", new Color(0.35f, 1.0f, 0.45f));
+            _material.SetShaderParameter("line_color_from_gradient", 0.0f);
+        }
+        else if (gradient == "heatmap")
+        {
+            // Soft lines: blend a gentle cream toward each band's own gradient color, with only
+            // a slight darkening so the contours read as a subtle emboss instead of hard lines.
+            _material.SetShaderParameter("line_color", new Color(0.92f, 0.90f, 0.85f));
+            _material.SetShaderParameter("line_color_from_gradient", 0.6f);
+            _material.SetShaderParameter("line_gradient_lightness", -0.12f);
+            _material.SetShaderParameter("line_gradient_shift", 0.0f);
         }
         else
         {
-            _mat.SetShaderParameter("line_color_from_gradient", 1.0f);
-            _mat.SetShaderParameter("line_gradient_lightness", -0.4f);
-            _mat.SetShaderParameter("line_gradient_shift", 0.0f);
+            _material.SetShaderParameter("line_color_from_gradient", 1.0f);
+            _material.SetShaderParameter("line_gradient_lightness", -0.4f);
+            _material.SetShaderParameter("line_gradient_shift", 0.0f);
         }
     }
 }
