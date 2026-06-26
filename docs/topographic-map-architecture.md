@@ -1,6 +1,6 @@
 # Topographic Map: Architecture and Engineering Notes
 
-This document captures how the topographic map works, the decisions behind it, and the gotchas worth knowing before changing anything. It reflects the state after the move to an all-GPU signed-distance-field (SDF) contour pipeline.
+This document captures how the topographic map works, the decisions behind it, and the gotchas worth knowing before changing anything. It reflects the state after the move to analytic GPU vector contour lines.
 
 ## What it is
 
@@ -8,67 +8,67 @@ A topographic map rendered from any 3D terrain the game shows: a hypsometric (el
 
 ## High-level architecture
 
-The map is produced on the GPU and consumed by one shader. There is no CPU contour work and no baked contour asset.
+The map is produced on the GPU and consumed by one shader. There is no CPU contour work and no baked contour asset. The contour lines are analytic vector geometry: the consumer computes the exact distance to the nearest contour segment per display pixel, so lines are resolution independent.
 
 ```
 PRODUCER (on the orthographic map camera, RGBA16F 2048x2048 SubViewport)
   TopDownCamera (ortho, top-down)  -->  depth buffer
   TopographicCompositorEffect (compute, PreTransparent) runs, in one render callback:
-    1. height pass:   depth -> R = normalized height, G = coverage mask
-    2. seed pass:     per-cell marching squares -> the contour SEGMENT (both endpoints)
-                      crossing each cell, as jump-flood seeds (segments, not points, so
-                      the SDF measures true distance to the line and lines do not dash)
-    3. jump flood:    ~11 ping-pong passes propagate the nearest segment (point-to-segment)
-    4. composite:     B = SIGNED distance (UV units) to the nearest contour line, signed
-                      by band parity (sign flips at every line, never mid-band)
-  Result: one buffer, R = height, G = mask, B = signed contour distance. (A is unused;
-  an opaque viewport forces alpha to 1, so it cannot carry data.)
+    1. height pass: depth -> color image R = normalized height, G = coverage mask
+    2. seed pass:   per-cell marching squares -> the contour SEGMENT (both endpoints, in
+                    UV) crossing each grid cell, written to a persistent segment texture
+  Result: the color image holds R = height, G = mask, plus a separate RGBA32F segment
+  texture holding (x0,y0,x1,y1) per cell (x0 < 0 means no contour in that cell). The
+  segment texture is wrapped in a Texture2Drd so a canvas shader can sample it.
 
 CONSUMER (per map: minimap, world map)
-  TopographicView (a ColorRect with topographic_style.gdshader) samples that one buffer
-  over its window (window_center, window_span) and outputs BOTH:
+  TopographicView (a ColorRect with topographic_style.gdshader) samples the height buffer
+  and the segment texture over its window (window_center, window_span) and outputs BOTH:
     - the stepped hypsometric tint (from R), and
-    - constant-width anti-aliased contour lines (from B), thresholded by px_per_uv so the
-      width is constant in screen pixels at any zoom. The line's level is round(h/interval)
-      from the local height, so nothing is stored per line.
-  The hypsometric tint's band color step is placed and anti-aliased AT the SDF line (using
-  the signed distance), not at the faceted per-pixel height threshold, so band edges stay
-  as smooth as the lines at any zoom and always coincide with them.
+    - constant-width anti-aliased contour lines. For each display pixel it finds its cell,
+      searches a small zoom-scaled neighborhood of cells, reads each cell's segment, takes
+      the minimum exact point-to-segment distance, and thresholds it (scaled to screen
+      pixels by px_per_uv) for a crisp constant-width line. The line's level is
+      round(h/interval) from the local height, so nothing is stored per line.
+  The hypsometric tint's band color step is placed and anti-aliased AT the contour line
+  (using the same live distance), not at the faceted per-pixel height threshold, so band
+  edges stay as smooth as the lines and always coincide with them.
 
 MARKER (overlay)
   A constant-size SDF arrow (marker_overlay.gdshader) drawn into a small UI Control on top
   of each map, rotated to the player's heading.
 ```
 
-The height buffer is the single shared data source, and tint and lines come from the same buffer in the same shader pass, so they are always aligned and move together under pan/zoom.
+The height buffer and the segment texture come from the same compositor over the same camera, and tint and lines are computed in the same shader pass, so they are always aligned and move together under pan/zoom.
 
 ### Why this shape
 
 - A single shader reading only the raw height buffer cannot draw crisp constant-width lines: a constant-width implicit isoline needs `distance_to_level / screen_space_height_gradient`, which is ill-conditioned on flat ground (the gradient goes to zero, so the line dots and flickers). See Design history.
-- Precomputing a contour SDF makes "distance to the nearest line" a robust texture lookup, and constant screen width comes from the zoom uniform (`px_per_uv`), not a per-pixel gradient. Flat ground is then fine.
-- Building the SDF on the GPU (jump flood) means no CPU readback, no bake step, no committed contour asset, and no staleness: change the terrain and the lines follow the next time the buffer renders.
+- Storing the contour SEGMENT per cell (from a discrete marching-squares band test) and measuring the exact point-to-segment distance per pixel makes "distance to the nearest line" a robust, gradient-free computation. Constant screen width comes from the zoom uniform (`px_per_uv`), not a per-pixel gradient, so flat ground is fine.
+- The distance is computed live per display pixel from the real segment geometry, so it is resolution independent: there is no precomputed distance field to quantize, so lines stay crisp and exactly constant-width at any zoom with no texel facets. It is also simpler than a precomputed field: no jump-flood, no ping-pong textures, no composite pass.
+- Building the segments on the GPU means no CPU readback, no bake step, no committed contour asset, and no staleness: change the terrain and the lines follow the next time the buffer renders.
 
 ## Component reference
 
 Reusable addon (`addons/topographic/`):
 
-- `TopographicCompositorEffect.cs` + `topographic.glsl` (height) + `contour_seed.glsl` + `contour_jfa.glsl` + `contour_composite.glsl`: the producer. A `CompositorEffect` at `PreTransparent` that runs the height pass then the seed/jump-flood/composite passes, using two `RGBA32F` ping-pong textures it owns (created lazily, sized to the buffer, freed on predelete). Exported params: `HeightMin`, `HeightMax`, `ContourInterval` (used by the seed pass), plus camera-rig params `CameraY`, `NearPlane`, `FarPlane`, `DepthReversed`.
-- `topographic_style.gdshader`: the unified consumer shader. Samples `height_buffer` over `window_center`/`window_span`; outputs the stepped tint from `R` and the contour line from `B`. Uniforms: `color_ramp`, `height_min`, `height_max`, `contour_interval`, `window_center`, `window_span`, `px_per_uv`, `major_every`, `minor_width_px`, `major_width_px`, `contour_darken`.
+- `TopographicCompositorEffect.cs` + `topographic.glsl` (height) + `contour_seed.glsl` (per-cell segment): the producer. A `CompositorEffect` at `PreTransparent` that runs the height pass then the seed pass, writing the per-cell contour segments into a persistent `RGBA32F` texture it owns (created lazily, sized to the buffer, freed on predelete). The segment texture is exposed as `SegmentTexture` (a `Texture2Drd` whose RID the compositor sets) so a canvas shader can sample it. Exported params: `HeightMin`, `HeightMax`, `ContourInterval` (used by the seed pass), plus camera-rig params `CameraY`, `NearPlane`, `FarPlane`, `DepthReversed`.
+- `topographic_style.gdshader`: the unified consumer shader. Samples `height_buffer` and `segments` over `window_center`/`window_span`; outputs the stepped tint from `R` and the analytic vector contour line from the segment texture. Uniforms: `color_ramp`, `height_min`, `height_max`, `contour_interval`, `window_center`, `window_span`, `px_per_uv`, `major_every`, `minor_width_px`, `major_width_px`, `contour_darken`.
 - `TopographicSettings.cs` (Godot `Resource`, `[GlobalClass]`): the single source of truth for the look: `ColorRamp` (a `GradientTexture1D`), `HeightMin`, `HeightMax`, `ContourInterval`, `MajorEvery`, `MinorWidthPx`, `MajorWidthPx`, `ContourDarken`.
-- `TopographicView.cs` (Godot `ColorRect`, `[Tool]`): one map view. `Apply()` pushes `Settings` (and the `HeightBuffer`) into its material; `SetWindow(center, span)` sets the window and `px_per_uv = Size.X / span` so the line width is constant in screen pixels.
+- `TopographicView.cs` (Godot `ColorRect`, `[Tool]`): one map view. `Apply()` pushes `Settings` (plus the `HeightBuffer` and `SegmentBuffer`) into its material; `SetWindow(center, span)` sets the window and `px_per_uv = Size.X / span` so the line width is constant in screen pixels.
 - `marker_overlay.gdshader` (canvas_item): SDF arrow for the player marker, `fwidth`-antialiased, drawn into a small UI `Control` rotated to the player's heading.
 
 Demo (`TopoDemo/`):
 
-- `scripts/MapUi.cs`: orchestration. Sets each `TopographicView`'s `HeightBuffer` to the `MapView` viewport texture and calls `Apply()` at `_Ready`; owns the pan/zoom window state and drives `Minimap.SetWindow`/`WorldMapImage.SetWindow` and the two marker overlays each frame. The marker heading comes from the player `Body` node's yaw (`MarkerRotation()`, currently `-PlayerBody.GlobalRotation.Y`; flip the sign if the arrow points backward).
-- `scenes/Demo.tscn`: the `MapView` SubViewport + `TopDownCamera` + compositor, the two map `TopographicView` `ColorRect`s (each with a `Marker` child overlay), the HUD, and the shared `assets/topographic_settings.tres`.
+- `scripts/MapUi.cs`: orchestration. Sets each `TopographicView`'s `HeightBuffer` to the `MapView` viewport texture and its `SegmentBuffer` to the compositor's `SegmentTexture` (via the `MapCompositor` export) and calls `Apply()` at `_Ready`; owns the pan/zoom window state and drives `Minimap.SetWindow`/`WorldMapImage.SetWindow` and the two marker overlays each frame. The marker heading comes from the player `Body` node's yaw (`MarkerRotation()`, currently `-PlayerBody.GlobalRotation.Y`; flip the sign if the arrow points backward).
+- `scenes/Demo.tscn`: the `MapView` SubViewport + `TopDownCamera` + compositor, the two map `TopographicView` `ColorRect`s (each with a `Marker` child overlay), the HUD, and the shared `assets/topographic_settings.tres`. `MapUi` references the compositor effect (`map_view_compositor_effect.tres`) directly so it can bind its `SegmentTexture`.
 - `scripts/TerrainBaker.cs`: edit-time, headless, CPU tool that bakes `heightmap.exr` (512x512) and `terrain_collision.res`. Not shipped in the running game. It does NOT touch contours (those are a runtime GPU derivation). Run with `godot --headless --path . --script res://TopoDemo/scripts/TerrainBaker.cs`.
 
 ## Hard rules and constraints
 
 - The topographic effect lives only on the orthographic map camera (via the `Compositor` on `TopDownCamera`). It must never affect the main gameplay view or the editor.
-- The contour SDF derives from the camera's height buffer, not a heightmap, so it works for any rendered geometry. Do not couple it to `heightmap.exr`.
-- Terrain, heightmap, and collision are static committed files baked at edit time (`TerrainBaker`). No runtime generation of those assets. The contour SDF is a runtime GPU derivation of the height buffer and is exempt.
+- The contour segments derive from the camera's height buffer, not a heightmap, so they work for any rendered geometry. Do not couple them to `heightmap.exr`.
+- Terrain, heightmap, and collision are static committed files baked at edit time (`TerrainBaker`). No runtime generation of those assets. The contour segments are a runtime GPU derivation of the height buffer and are exempt.
 - No emdash characters (or other AI-tell characters) in committed files, including comments. American English. `//` line comments in C#.
 - Coordinate conventions: world to buffer UV is `buffer_uv = world.xz / 1536 + 0.5`. Normalized height for world height `H` is `(H + 40) / 150` (range `[-40, 110]`).
 
@@ -80,9 +80,11 @@ The contour approach changed several times. The reasoning matters so the dead en
 
 2. The map was split into a height buffer (data) plus a per-pixel styling shader run at display resolution. Tint became crisp. Contour lines, drawn implicitly per pixel, did not: a constant-pixel-width implicit line divides distance-to-level by the screen-space height gradient, which approaches zero on near-flat ground, so the line dots, stipples, and flickers. Height smoothing, an analytic gradient, and a flat-area guard each helped but none fully fixed it, because the instability is inherent to implicit isolines on flat terrain.
 
-3. Contour lines became vector geometry: extract isolines with Marching Squares on a CPU readback of the buffer and stroke them as constant-width lines. Smooth and crisp, but it needed a one-time CPU extraction. To remove the startup flash, the field was then baked into a committed `.res`; baking from the heightmap misaligned the lines on gentle slopes (the buffer is the rendered mesh, which differs slightly from the heightmap; on gentle slopes a small height error becomes a large lateral line offset), so the bake had to read the camera buffer.
+3. Contour lines became vector geometry: extract isolines with Marching Squares on a CPU readback of the buffer and stroke them as constant-width lines. Smooth and crisp, but it needed a one-time CPU extraction. To remove the startup flash, the field was then baked into a committed `.res`; baking from the heightmap misaligned the lines on gentle slopes (the buffer is the rendered mesh, which differs slightly from the heightmap; on gentle slopes a small height error becomes a large lateral line offset), so the bake had to read the camera buffer. This was vector and crisp but baked and scattered across files.
 
-4. Finally the contours moved entirely onto the GPU as an SDF (this version). The compositor builds a contour distance field from the height buffer with a jump-flood pass, and the unified shader draws constant-width lines by thresholding that distance scaled by the zoom uniform. This eliminates the flat-ground problem (no gradient division), the CPU readback, the bake step, the committed asset, and the staleness, and unifies tint and lines into one shader sampling one buffer. It is the all-GPU realization of "tint and lines in one place."
+4. The contours moved entirely onto the GPU as a signed distance field (SDF): the compositor built a contour distance field from the height buffer with a seed pass plus a jump-flood (~11 ping-pong passes) and a composite, and the unified shader drew constant-width lines by thresholding that distance. This removed the CPU readback, the bake, the committed asset, and the staleness, and fixed the flat-ground problem. But the distance field is quantized into the buffer grid, so at extreme zoom the bilinearly reconstructed line spreads and softens (it has a facet/blur cap at the texel resolution).
+
+5. Finally the contours became analytic vector lines on the GPU (this version). The seed pass is kept (it already produces the exact per-cell contour segment), but the jump-flood and composite are dropped: instead of precomputing a distance FIELD, the segment texture is sampled directly by the canvas shader, which computes the EXACT point-to-segment distance per display pixel. This is resolution independent (no field quantization, no facet cap, constant width holds at any zoom), and simpler than the SDF (no jump-flood, no ping-pong, no composite). It is the all-GPU realization of "true vector lines, computed live."
 
 ## Gotchas and obscure details
 
@@ -90,25 +92,29 @@ Godot rendering:
 
 - `use_hdr_2d = true` on the `MapView` SubViewport is required. Without it the viewport texture is 8-bit, which crushes the normalized height to 256 levels and shows as terraced contours in flat areas.
 - The map camera needs a linear-tonemap environment override (`Environment_map`, `background_mode = 1`, `tonemap_mode = 0`, the default so Godot does not serialize it). Otherwise the scene's ACES tonemap distorts the stored height values nonlinearly.
-- `render_target_update_mode` integer values: `Disabled = 0`, `Once = 1`, `WhenVisible = 2`, `WhenParentVisible = 3`, `Always = 4`. The producer uses `Once` (1): the terrain is static, so the whole compute sequence (height + SDF) runs one frame and stops. Raising it regenerates the SDF automatically for dynamic terrain.
+- `render_target_update_mode` integer values: `Disabled = 0`, `Once = 1`, `WhenVisible = 2`, `WhenParentVisible = 3`, `Always = 4`. The producer uses `Once` (1): the terrain is static, so the height + seed passes run one frame and stop. Raising it regenerates the segments automatically for dynamic terrain.
 - A `canvas_item` fragment shader cannot use an early `return` (Godot errors). Compute the result in branches and write `COLOR` once.
 
-GPU SDF pipeline:
+Exposing an RD texture to a canvas shader (Texture2Drd):
 
-- The opaque map viewport FORCES the color buffer alpha to 1.0 after the compositor writes it, so the `A` channel cannot carry a payload (an early version stored the level index in `A` and it came back as a constant 1). The line's level is instead recomputed in the shader as `round(h / interval)` from the local height, since a pixel on a line is at that line's elevation.
-- The SDF distance in `B` is in UV units (0..~1.4), not texels. To get a constant screen width, scale by `px_per_uv = view_size_px / window_span` (screen pixels per UV unit). Dividing by the buffer resolution instead under-scales by ~2048x and paints the whole map as line color.
-- Jump flood needs ping-pong textures and a memory barrier between every pass; the compositor runs all passes in one `ComputeList` with `ComputeListAddBarrier` between dispatches. Each compute pass needs its own uniform set (use `UniformSetCacheRD.GetCache` per shader).
+- The compositor's segment texture is a `RenderingDevice` texture, not a Godot `Texture2D`. To let a canvas shader sample it, the compositor wraps it in a `Texture2Drd` (`SegmentTexture`) and sets `SegmentTexture.TextureRdRid = _segments` when it (re)creates the RD texture. `MapUi` binds that `Texture2Drd` to each view's `segments` uniform. Both run on the same `RenderingServer.GetRenderingDevice()`, so the RID is valid for sampling.
+- The RD texture must be created with `SamplingBit` usage (in addition to `StorageBit` so the compute pass can write it), or the canvas shader cannot sample it.
+- The `Texture2Drd`'s RID is empty until the compositor's first render-once populates it. Binding the (initially empty) wrapper at `_Ready` is fine; it becomes valid that same frame. Forcing the world map visible before the first compositor render produces a harmless one-frame "Uniforms were never supplied for set (1)" warning; in normal play the world map is hidden until well after the producer has run, so it never fires.
+- Sample the segment texture with `filter_nearest` and read exact texels with `texelFetch`: each texel holds raw endpoint coordinates, which must not be bilinearly interpolated between cells.
+
+Analytic vector lines:
+
 - The seed pass uses a discrete band comparison (per-cell marching squares for the level crossing the cell), which is robust on flat ground precisely because there is no gradient division.
-- Seed SEGMENTS, not points. An earlier version seeded one crossing point per texel; the SDF then measured distance to the nearest point, and midpoints between points read as farther, so lines DASHED at high zoom. Seeding the contour segment per cell (per-cell marching squares) and using point-to-segment distance in the jump flood and composite gives true distance to the line.
-- Store a SIGNED distance, not unsigned. An unsigned distance has a V-shaped kink at the line, and a per-texel V cannot be bilinearly reconstructed (its minimum rounds to ~0.5 texel between texel centers), so the line oscillates and dashes when zoomed in with a tight anti-alias. A signed distance is linear THROUGH the line, so the bilinear-sampled zero crossing is sub-texel accurate; the line (`|B|`) reaches 0 exactly on the contour and stays crisp at any zoom.
-- Sign B by BAND PARITY (`floor(h/interval)` even/odd), NOT by side of the nearest level (`sign(h - round(h/interval)*interval)`). Side-of-level signing flips at the mid-band point too (where `round()` jumps), which puts a spurious zero crossing -- a phantom line -- between every pair of real lines. Parity is constant within a band and flips only at lines, so adjacent bands still get opposite signs (a clean zero at each real line) with no mid-band flip. The line reads `|B|`.
-- The line uses a tight 1px anti-alias (`clamp(width - |B|*px_per_uv + 0.5, 0, 1)`), not a wide soft falloff, so it is crisp rather than blurry.
-- Band-edge quality at high zoom: a hard `floor(h/interval)` band fill shows the buffer's texel facets when zoomed in. Placing and anti-aliasing the band color step at the SDF line instead makes band edges as smooth as the lines and coincident with them. The fill side (below/above the nearest line) is computed in the shader from the local height (`sign(h - round(h/interval)*interval)`); its level and blend jumps at mid-band cancel, so the fill color stays continuous there. This is safe (it is a fill-edge AA, not a constant-width line, so the flat-ground gradient instability does not apply).
+- Seed SEGMENTS, not points. An earlier point-per-cell seed measured distance to the nearest point, and midpoints between points read as farther, so lines DASHED at high zoom. The contour segment per cell (per-cell marching squares) with exact point-to-segment distance gives true distance to the line.
+- The per-pixel neighborhood search radius scales with zoom: `radius = ceil((max_width_px + 1.5) / px_per_uv * tex_size)`, clamped to `[1, 8]` cells. At gameplay zoom a constant-width line spans about one cell (radius 1-2); at min zoom (full world) the line can cover several cells, so the radius widens to its cap. The clamp bounds the worst-case per-pixel cost.
+- The distance is in UV units; to get a constant screen width, scale by `px_per_uv = view_size_px / window_span` (screen pixels per UV unit). The line uses a tight 1px anti-alias (`clamp(width - dist_px + 0.5, 0, 1)`), not a wide soft falloff, so it is crisp rather than blurry. No signing is needed: the distance is to the real segment geometry, so it is small only at real lines (no phantom mid-band line).
+- Band-edge quality at high zoom: a hard `floor(h/interval)` band fill shows the buffer's texel facets when zoomed in. Placing and anti-aliasing the band color step at the line (using the same live distance, with side below/above from `sign(h - round(h/interval)*interval)`) makes band edges as smooth as the lines and coincident with them. The level and blend jumps at mid-band cancel, so the fill color stays continuous there. This is safe (it is a fill-edge AA, not a constant-width line, so the flat-ground gradient instability does not apply).
+- Saddle cells (a cell with two contour crossings) are not currently handled: the seed pass stores one segment per cell (the first two crossings found). Saddles are rare at the buffer resolution; handling them would need a second segment per cell.
 
 ## Performance and load behavior
 
-- The contour SDF is built entirely on the GPU in the compositor: a seed pass, ~11 jump-flood passes, and a composite, over the 2048x2048 buffer. Because the terrain is static (`update_mode = Once`), this runs once at load in a few milliseconds. There is no per-frame cost and effectively no startup flash.
-- The consumer is a single canvas shader sampling one texture; pan/zoom only changes uniforms, so an idle or moving map costs one cheap shader.
+- The producer runs two compute passes (height + seed) over the 2048x2048 buffer. Because the terrain is static (`update_mode = Once`), this runs once at load in well under a millisecond. There is no per-frame producer cost and effectively no startup flash. (The dropped jump-flood was ~11 extra passes, so the producer is now cheaper than the SDF version.)
+- The consumer is a single canvas shader sampling two textures; pan/zoom only changes uniforms. The per-pixel line search is cheap at gameplay zoom (radius 1-2). At the absolute worst case (min zoom, full-screen world map, radius 8) the line shader adds roughly 0.7 ms/frame over a no-search baseline on an RTX 5090; at gameplay zoom it is a small fraction of that. This is a map overlay, not a hot gameplay path.
 - There is no CPU contour work, no buffer readback, and no committed contour asset to load or keep in sync.
 
 ## Tuning parameters
@@ -120,6 +126,7 @@ GPU SDF pipeline:
 
 ## Known limitations and follow-ups
 
-- The contour SDF resolution is the buffer resolution (2048). Lines are crisp and anti-aliased at any zoom (an SDF upscales well), but the line path follows texel-resolution seeds, which is the terrain's effective detail limit anyway.
+- The contour segments are at the buffer resolution (2048). Lines are crisp and exactly constant-width at any zoom (the distance is computed analytically), but the line PATH is a piecewise-linear polyline through texel-resolution crossings, which is the terrain's effective detail limit anyway. At extreme zoom the polyline's straight chords become visible; that is the data resolution, not a rendering artifact.
+- Saddle cells store only one segment (see Gotchas).
 - The producer reconstructs height from depth for an orthographic projection; a perspective map camera would need the reconstruction adjusted.
 - The marker is a constant-size, `fwidth`-antialiased SDF arrow UI overlay on each map (`marker_overlay.gdshader`). Verify the heading sign once in-editor.

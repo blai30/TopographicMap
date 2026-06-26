@@ -159,6 +159,7 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("60_mapui")
 MapViewport = NodePath("../../MapView")
+MapCompositor = ExtResource("6_hqj3e")
 Minimap = NodePath("Minimap")
 WorldMapImage = NodePath("WorldMap/WorldMapImage")
 WorldMapRoot = NodePath("WorldMap")
