@@ -1,6 +1,0 @@
-[gd_scene load_steps=2 format=3]
-
-[ext_resource type="Compositor" path="res://addons/topographic/presets/classic_ink.tres" id="1_comp"]
-
-[node name="TopographicCamera3D" type="Camera3D"]
-compositor = ExtResource("1_comp")

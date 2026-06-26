@@ -1,0 +1,226 @@
+[gd_scene format=3 uid="uid://dhsq8xxae6jw5"]
+
+[ext_resource type="Material" uid="uid://baq14ca08hfn7" path="res://TopoDemo/assets/water_material.tres" id="5_nl2f7"]
+[ext_resource type="CompositorEffect" uid="uid://btxcwgfvxwdml" path="res://TopoDemo/assets/map_view_compositor_effect.tres" id="6_hqj3e"]
+[ext_resource type="Material" uid="uid://dqiaexa118y58" path="res://TopoDemo/assets/terrain_material.tres" id="7_terrainmat"]
+[ext_resource type="Texture2D" uid="uid://cbh6enbhl3vja" path="res://addons/topographic/gradients/blueprint.tres" id="8_47k30"]
+[ext_resource type="Shape3D" uid="uid://w3o83dpea0if" path="res://TopoDemo/assets/terrain_collision.res" id="8_terraincol"]
+[ext_resource type="Texture2D" uid="uid://bk812lc2f2ueh" path="res://addons/topographic/gradients/sepia_vintage.tres" id="10_47k30"]
+[ext_resource type="Script" uid="uid://cb6kukq0i4na7" path="res://TopoDemo/scripts/PlayerController.cs" id="20_ypqk8"]
+[ext_resource type="Shader" uid="uid://c526piefpacph" path="res://addons/topographic/marker_overlay.gdshader" id="40_marker"]
+[ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
+[ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic.gdshader" id="70_style"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+sky_top_color = Color(0.28, 0.45, 0.75, 1)
+sky_horizon_color = Color(0.64, 0.74, 0.82, 1)
+ground_bottom_color = Color(0.33, 0.35, 0.34, 1)
+ground_horizon_color = Color(0.64, 0.74, 0.82, 1)
+sun_angle_max = 40.0
+sun_curve = 0.12
+
+[sub_resource type="Sky" id="Sky_main"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_3j1m5"]
+background_mode = 2
+background_color = Color(0.24780053, 0.2716998, 0.33183005, 1)
+sky = SubResource("Sky_main")
+ambient_light_source = 3
+ambient_light_color = Color(0.6651851, 0.7014107, 0.76737565, 1)
+tonemap_mode = 4
+ssao_enabled = true
+fog_enabled = true
+fog_light_color = Color(0.74, 0.8, 0.86, 1)
+fog_light_energy = 0.4
+fog_density = 0.0015
+fog_sky_affect = 0.0
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_water"]
+size = Vector2(2048, 2048)
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_terrain"]
+size = Vector2(1536, 1536)
+subdivide_width = 511
+subdivide_depth = 511
+
+[sub_resource type="Environment" id="Environment_map"]
+background_mode = 1
+
+[sub_resource type="Compositor" id="Compositor_io8mt"]
+compositor_effects = Array[CompositorEffect]([ExtResource("6_hqj3e")])
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+radius = 0.3
+height = 1.8
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_player"]
+radius = 0.3
+height = 1.8
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_minimap"]
+shader = ExtResource("70_style")
+shader_parameter/elevation_gradient = ExtResource("8_47k30")
+shader_parameter/height_min = -40.0
+shader_parameter/height_max = 110.0
+shader_parameter/contour_interval = 10.0
+shader_parameter/lines_per_major = 5.0
+shader_parameter/minor_line_width_px = 0.5000000074506
+shader_parameter/major_line_width_px = 0.80000001192096
+shader_parameter/line_color = Color(1, 1, 1, 1)
+shader_parameter/line_color_from_gradient = 0.0
+shader_parameter/line_gradient_lightness = -0.4
+shader_parameter/line_gradient_shift = 0.0
+shader_parameter/window_center = Vector2(0.5, 0.5)
+shader_parameter/window_span = Vector2(0.143, 0.143)
+shader_parameter/px_per_uv = 1.0
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_marker_overlay"]
+shader = ExtResource("40_marker")
+shader_parameter/marker_color = Color(0.95, 0.15, 0.15, 1)
+shader_parameter/outline_color = Color(1, 1, 1, 1)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_worldmap"]
+shader = ExtResource("70_style")
+shader_parameter/elevation_gradient = ExtResource("10_47k30")
+shader_parameter/height_min = -40.0
+shader_parameter/height_max = 110.0
+shader_parameter/contour_interval = 10.0
+shader_parameter/lines_per_major = 5.0
+shader_parameter/minor_line_width_px = 0.60000000894072
+shader_parameter/major_line_width_px = 0.80000001192096
+shader_parameter/line_color = Color(1, 1, 1, 1)
+shader_parameter/line_color_from_gradient = 1.0
+shader_parameter/line_gradient_lightness = -0.05000002123439995
+shader_parameter/line_gradient_shift = -0.3000000044704
+shader_parameter/window_center = Vector2(0.5, 0.5)
+shader_parameter/window_span = Vector2(1, 1)
+shader_parameter/px_per_uv = 1.0
+
+[node name="Demo" type="Node3D" unique_id=2147396049]
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=284187964]
+transform = Transform3D(0.76604444, 0.52654076, -0.3686878, 0, 0.57357645, 0.81915206, 0.6427876, -0.62750685, 0.43938506, 0, 0, 0)
+light_color = Color(1, 0.96, 0.88, 1)
+light_energy = 1.2
+shadow_enabled = true
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1917926850]
+environment = SubResource("Environment_3j1m5")
+
+[node name="Water" type="MeshInstance3D" parent="." unique_id=1819411141]
+material_override = ExtResource("5_nl2f7")
+mesh = SubResource("PlaneMesh_water")
+
+[node name="Terrain" type="MeshInstance3D" parent="." unique_id=536294249]
+layers = 2
+material_override = ExtResource("7_terrainmat")
+extra_cull_margin = 200.0
+mesh = SubResource("PlaneMesh_terrain")
+
+[node name="TerrainBody" type="StaticBody3D" parent="." unique_id=1195774246]
+
+[node name="TerrainCollision" type="CollisionShape3D" parent="TerrainBody" unique_id=1266095458]
+transform = Transform3D(3, 0, 0, 0, 3, 0, 0, 0, 3, 0, 0, 0)
+shape = ExtResource("8_terraincol")
+
+[node name="MapView" type="SubViewport" parent="." unique_id=808317950]
+use_hdr_2d = true
+size = Vector2i(2048, 2048)
+render_target_update_mode = 1
+
+[node name="TopDownCamera" type="Camera3D" parent="MapView" unique_id=49419363]
+transform = Transform3D(1, 0, 0, 0, 0, 1, 0, -1, 0, 0, 200, 0)
+cull_mask = 2
+environment = SubResource("Environment_map")
+compositor = SubResource("Compositor_io8mt")
+projection = 1
+size = 1536.0
+near = 80.0
+far = 245.0
+
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1101662163 node_paths=PackedStringArray("CameraPivot", "Body")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 36.39908, 0)
+script = ExtResource("20_ypqk8")
+CameraPivot = NodePath("CameraPivot")
+Body = NodePath("Body")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=299342782]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="Body" type="Node3D" parent="Player" unique_id=3592494]
+
+[node name="BodyMesh" type="MeshInstance3D" parent="Player/Body" unique_id=1981507952]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
+mesh = SubResource("CapsuleMesh_player")
+
+[node name="CameraPivot" type="SpringArm3D" parent="Player" unique_id=82672783]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+spring_length = 6.0
+
+[node name="MainCamera" type="Camera3D" parent="Player/CameraPivot" unique_id=1154431821]
+cull_mask = 1047551
+
+[node name="Hud" type="CanvasLayer" parent="." unique_id=1778174740]
+
+[node name="MapUi" type="Control" parent="Hud" unique_id=956150903 node_paths=PackedStringArray("MapViewport", "Minimap", "WorldMap", "WorldMapOverlay", "Player", "MinimapMarker", "WorldMapMarker", "PlayerBody")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("60_mapui")
+MapViewport = NodePath("../../MapView")
+MapCompositor = ExtResource("6_hqj3e")
+Minimap = NodePath("Minimap")
+WorldMap = NodePath("WorldMapOverlay/WorldMap")
+WorldMapOverlay = NodePath("WorldMapOverlay")
+Player = NodePath("../../Player")
+MinimapMarker = NodePath("Minimap/Marker")
+WorldMapMarker = NodePath("WorldMapOverlay/WorldMap/Marker")
+PlayerBody = NodePath("../../Player/Body")
+
+[node name="Minimap" type="ColorRect" parent="Hud/MapUi" unique_id=1261521365]
+material = SubResource("ShaderMaterial_minimap")
+clip_contents = true
+layout_mode = 0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -276.0
+offset_top = 20.0
+offset_right = -20.0
+offset_bottom = 276.0
+mouse_filter = 2
+
+[node name="Marker" type="ColorRect" parent="Hud/MapUi/Minimap" unique_id=730020001]
+material = SubResource("ShaderMaterial_marker_overlay")
+layout_mode = 0
+offset_right = 24.0
+offset_bottom = 24.0
+mouse_filter = 2
+
+[node name="WorldMapOverlay" type="ColorRect" parent="Hud/MapUi" unique_id=2138920796]
+clip_contents = true
+layout_mode = 0
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0, 0, 0, 0.6)
+
+[node name="WorldMap" type="ColorRect" parent="Hud/MapUi/WorldMapOverlay" unique_id=819776301]
+material = SubResource("ShaderMaterial_worldmap")
+clip_contents = true
+layout_mode = 0
+offset_right = 900.0
+offset_bottom = 900.0
+mouse_filter = 2
+
+[node name="Marker" type="ColorRect" parent="Hud/MapUi/WorldMapOverlay/WorldMap" unique_id=730020002]
+material = SubResource("ShaderMaterial_marker_overlay")
+layout_mode = 0
+offset_right = 24.0
+offset_bottom = 24.0
+mouse_filter = 2

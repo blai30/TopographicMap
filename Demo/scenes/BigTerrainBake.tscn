@@ -1,6 +1,0 @@
-[gd_scene format=3]
-
-[ext_resource type="Script" path="res://Demo/scripts/BigTerrainBaker.cs" id="1_bb"]
-
-[node name="BigTerrainBake" type="Node"]
-script = ExtResource("1_bb")

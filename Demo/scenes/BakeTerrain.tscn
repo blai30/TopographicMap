@@ -1,6 +1,0 @@
-[gd_scene format=3 uid="uid://bax373v1acr5j"]
-
-[ext_resource type="Script" uid="uid://74abct82midg" path="res://Demo/scripts/TerrainBaker.cs" id="1_baker"]
-
-[node name="TerrainBaker" type="Node" unique_id=801559541]
-script = ExtResource("1_baker")

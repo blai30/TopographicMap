@@ -1,0 +1,17 @@
+[gd_resource type="ShaderMaterial" format=3 uid="uid://dqiaexa118y58"]
+
+[ext_resource type="Shader" uid="uid://df2f8x2eh3r6b" path="res://TopoDemo/shaders/terrain.gdshader" id="1_shader"]
+[ext_resource type="Texture2D" uid="uid://cyl84wmfsm3j3" path="res://TopoDemo/assets/heightmap.exr" id="2_heightmap"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_shader")
+shader_parameter/heightmap = ExtResource("2_heightmap")
+shader_parameter/terrain_size = 1536.0
+shader_parameter/heightmap_resolution = 512.0
+shader_parameter/min_height = -40.0
+shader_parameter/max_height = 110.0
+shader_parameter/sand_color = Color(0.78, 0.72, 0.5, 1)
+shader_parameter/grass_color = Color(0.36, 0.52, 0.27, 1)
+shader_parameter/rock_color = Color(0.45, 0.4, 0.34, 1)
+shader_parameter/snow_color = Color(0.95, 0.95, 0.97, 1)

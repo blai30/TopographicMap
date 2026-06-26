@@ -1,12 +1,11 @@
 #if TOOLS
 using Godot;
 
-namespace TopographicCameraShader;
+namespace TopographicMap;
 
-// Minimal editor plugin so the addon appears under Project Settings > Plugins and
-// can be enabled/disabled like any installed addon. The effect itself is a
-// [GlobalClass] CompositorEffect and needs no runtime registration, so this plugin
-// intentionally has no body. This exists to make the package installable.
+// Minimal editor plugin. Its presence makes the topographic addon enableable
+// under Project Settings > Plugins. The effect itself is a [GlobalClass]
+// CompositorEffect used directly on a map camera's Compositor.
 [Tool]
 public partial class TopographicPlugin : EditorPlugin
 {
