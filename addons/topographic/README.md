@@ -20,7 +20,7 @@ shader with no CPU work and no bake step.
      crossing each grid cell (both endpoints, in UV) into a separate persistent `RGBA32F`
      texture, one `(x0, y0, x1, y1)` per cell. Both passes are GPU-only and need no
      committed asset.
-3. A `ColorRect` running the `topographic_style` shader samples the height buffer and the
+3. A `ColorRect` running the `topographic` shader samples the height buffer and the
    segment texture over a pan/zoom window. For each pixel it takes the exact
    point-to-segment distance to the nearest cell's contour, so it draws crisp
    constant-width anti-aliased lines at any zoom, plus the stepped hypsometric tint. The
@@ -49,7 +49,7 @@ The look (palette, height range, contour interval, line widths) lives on each ma
    `NearPlane`, `FarPlane`, `DepthReversed`), and assign the compositor to the top-down
    camera.
 4. Add a `ColorRect` wherever you want a map and give it a `ShaderMaterial` running
-   `topographic_style.gdshader`. Set the look params on that material (grouped in the
+   `topographic.gdshader`. Set the look params on that material (grouped in the
    inspector as **Elevation** and **Contours**): `elevation_gradient` (a `GradientTexture1D`),
    `height_min`/`height_max`, `contour_interval`, `lines_per_major`, the line widths
    (`minor_line_width_px`/`major_line_width_px`), and the line color (`line_color`,

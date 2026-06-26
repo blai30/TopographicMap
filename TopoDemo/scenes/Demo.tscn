@@ -9,7 +9,7 @@
 [ext_resource type="Script" uid="uid://cb6kukq0i4na7" path="res://TopoDemo/scripts/PlayerController.cs" id="20_ypqk8"]
 [ext_resource type="Shader" uid="uid://c526piefpacph" path="res://addons/topographic/marker_overlay.gdshader" id="40_marker"]
 [ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
-[ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic_style.gdshader" id="70_style"]
+[ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic.gdshader" id="70_style"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.28, 0.45, 0.75, 1)

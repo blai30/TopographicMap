@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://btidtufv82oip"
+path="res://.godot/imported/depth_to_height.glsl-01ce32b1cb25b5bb67898f5a4d3f3a83.res"
+
+[deps]
+
+source_file="res://addons/topographic/depth_to_height.glsl"
+dest_files=["res://.godot/imported/depth_to_height.glsl-01ce32b1cb25b5bb67898f5a4d3f3a83.res"]
+
+[params]
+

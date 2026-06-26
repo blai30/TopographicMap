@@ -48,7 +48,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
         _rd = RenderingServer.GetRenderingDevice();
         if (_rd == null) return;
 
-        bool ok = LoadShader("res://addons/topographic/topographic.glsl", out _heightShader, out _heightPipeline) &&
+        bool ok = LoadShader("res://addons/topographic/depth_to_height.glsl", out _heightShader, out _heightPipeline) &&
                   LoadShader("res://addons/topographic/contour_seed.glsl", out _seedShader, out _seedPipeline);
         if (!ok) return;
 
