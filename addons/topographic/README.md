@@ -52,7 +52,8 @@ The look (palette, height range, contour interval, line widths) lives on each ma
    `topographic_style.gdshader`. Set the look params on that material (grouped in the
    inspector as **Elevation** and **Contours**): `elevation_gradient` (a `GradientTexture1D`),
    `height_min`/`height_max`, `contour_interval`, `lines_per_major`, the line widths
-   (`minor_line_width_px`/`major_line_width_px`), and `contour_line_darken`. Keep
+   (`minor_line_width_px`/`major_line_width_px`), and the line color (`line_color`,
+   `line_color_from_gradient`, `line_gradient_lightness`, `line_gradient_shift`). Keep
    `height_min`/`height_max`/`contour_interval` in sync with the compositor.
 5. From code, bind `height_buffer` to the `SubViewport`'s `ViewportTexture` and `segments`
    to the compositor's `SegmentTexture`.

@@ -1,8 +1,8 @@
 [gd_resource type="GradientTexture1D" format=3 uid="uid://bk812lc2f2ueh"]
 
 [sub_resource type="Gradient" id="Gradient_sepia"]
-offsets = PackedFloat32Array(0, 0.35, 0.7, 1)
-colors = PackedColorArray(0.88, 0.82, 0.66, 1, 0.8, 0.68, 0.48, 1, 0.6, 0.44, 0.28, 1, 0.36, 0.25, 0.17, 1)
+offsets = PackedFloat32Array(0, 0.3, 0.65, 1)
+colors = PackedColorArray(0.36, 0.25, 0.17, 1, 0.6, 0.44, 0.28, 1, 0.8, 0.68, 0.48, 1, 0.88, 0.82, 0.66, 1)
 
 [resource]
 gradient = SubResource("Gradient_sepia")

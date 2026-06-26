@@ -35,14 +35,30 @@ uniform float contour_interval = 10.0;
 /** Every Nth contour line is drawn as a major (thicker) line. */
 uniform float lines_per_major : hint_range(1.0, 20.0, 1.0) = 5.0;
 /** Width of the minor contour lines, in screen pixels. */
-uniform float minor_line_width_px : hint_range(0.0, 8.0, 0.1) = 1.1;
+uniform float minor_line_width_px : hint_range(0.0, 8.0, 0.1) = 0.6;
 /** Width of the major contour lines, in screen pixels. */
-uniform float major_line_width_px : hint_range(0.0, 8.0, 0.1) = 1.9;
+uniform float major_line_width_px : hint_range(0.0, 8.0, 0.1) = 0.8;
+// Contour line color. Lines can use a fixed custom color, a color derived from the
+// gradient, or a blend of the two.
+group_uniforms Contours.Color;
+/** Custom contour line color, used when [code]line_color_from_gradient[/code] is below 1. */
+uniform vec4 line_color : source_color = vec4(1.0);
 /**
- * Multiplies the gradient color to tint contour lines darker than their band.
- * 0 = black, 1 = the same color as the band.
+ * Blends the line color between the custom [code]line_color[/code] and a color derived
+ * from the gradient. 0 = fully custom, 1 = fully gradient-derived.
  */
-uniform float contour_line_darken : hint_range(0.0, 1.0, 0.01) = 0.6;
+uniform float line_color_from_gradient : hint_range(0.0, 1.0, 0.01) = 1.0;
+/**
+ * For the gradient-derived color: darkens (negative, toward black) or lightens (positive,
+ * toward white) the sampled gradient color. Lets dynamic lines stay visible on both light
+ * and dark palettes.
+ */
+uniform float line_gradient_lightness : hint_range(-1.0, 1.0, 0.01) = -0.05;
+/**
+ * For the gradient-derived color: shifts where the line samples the gradient, so it can
+ * take a neighboring elevation's hue instead of its own band's color.
+ */
+uniform float line_gradient_shift : hint_range(-0.5, 0.5, 0.01) = -0.3;
 
 // Runtime inputs bound by MapUi each frame; do not hand-edit in the inspector.
 group_uniforms Runtime;
@@ -124,7 +140,16 @@ void fragment() {
     float width = mix(minor_line_width_px, major_line_width_px, is_major);
     float line_a = clamp(width - dist_px + 0.5, 0.0, 1.0);
     float level_norm = clamp((level_index * contour_interval - height_min) / span, 0.0, 1.0);
-    vec3 line_col = texture(elevation_gradient, vec2(level_norm, 0.5)).rgb * contour_line_darken;
+
+    // Gradient-derived line color: sample the gradient at the (optionally shifted) line
+    // elevation, then darken (negative) or lighten (positive) toward black/white. Blend that
+    // against the custom line_color so lines can be fixed, dynamic, or anything between.
+    float grad_pos = clamp(level_norm + line_gradient_shift, 0.0, 1.0);
+    vec3 grad_line = texture(elevation_gradient, vec2(grad_pos, 0.5)).rgb;
+    grad_line = line_gradient_lightness >= 0.0
+        ? mix(grad_line, vec3(1.0), line_gradient_lightness)
+        : mix(grad_line, vec3(0.0), -line_gradient_lightness);
+    vec3 line_col = mix(line_color.rgb, grad_line, line_color_from_gradient);
 
     COLOR = vec4(mix(tint, line_col, line_a), 1.0);
 }
