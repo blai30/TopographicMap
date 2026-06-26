@@ -33,6 +33,7 @@ public partial class MapUi : Control
     private float _zoom = 1.8f;
     private Vector2 _panUv = new(0.5f, 0.5f); // world UV at the world-map window center
     private bool _dragging;
+    private bool _minimapRevealed;
 
     public override void _Ready()
     {
@@ -46,6 +47,12 @@ public partial class MapUi : Control
         WorldMapImage.Apply();
 
         WorldMapRoot.Visible = false;
+
+        // Keep the minimap hidden until the compositor has produced the segment texture
+        // (see _Process). Drawing it before the producer's first render samples the segment
+        // texture with no live RID and trips a "Uniforms were never supplied for set (1)"
+        // draw error on the first frame.
+        Minimap.Visible = false;
 
         SetupMarker(MinimapMarker);
         SetupMarker(WorldMapMarker);
@@ -64,6 +71,18 @@ public partial class MapUi : Control
 
     public override void _Process(double delta)
     {
+        if (!_minimapRevealed)
+        {
+            // Wait for the producer's first render before showing the minimap.
+            if (MapCompositor != null && !MapCompositor.HasProduced)
+            {
+                return;
+            }
+
+            _minimapRevealed = true;
+            Minimap.Visible = !WorldMapRoot.Visible;
+        }
+
         UpdateMinimap();
         if (!WorldMapRoot.Visible) return;
         LayoutWorldMap();

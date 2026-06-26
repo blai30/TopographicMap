@@ -49,7 +49,10 @@ float vector_line_dist(vec2 buffer_uv) {
 		for (int dx = -radius; dx <= radius; dx++) {
 			ivec2 cell = clamp(base + ivec2(dx, dy), ivec2(0), hi);
 			vec4 seg = texelFetch(segments, cell, 0);
-			if (seg.x < 0.0) { continue; }
+			// x0 <= 0 means no contour: the seed pass writes -1 for empty cells, and a valid
+			// endpoint UV is always > 0. This also rejects the 1x1 placeholder texture (zero
+			// init) bound before the first compositor render and any out-of-range fetch.
+			if (seg.x <= 0.0) { continue; }
 			best = min(best, seg_dist(buffer_uv, seg));
 		}
 	}

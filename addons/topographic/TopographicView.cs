@@ -3,13 +3,14 @@ using Godot;
 namespace TopographicMap;
 
 // One map view: a ColorRect running the unified topographic shader over a pan/zoom
-// window. Applies TopographicSettings to its material and feeds the window plus the
-// constant-line-width scale. Tint and contour lines are produced entirely in the
-// shader from the shared height buffer, so there is no contour geometry to manage.
+// window. The look (palette, height range, contour interval, line style) lives on the
+// ColorRect's ShaderMaterial as shader parameters; this script only feeds the runtime
+// inputs the material cannot hold: the shared height buffer, the per-cell contour segment
+// texture, and the pan/zoom window with its constant-line-width scale. Tint and contour
+// lines are produced entirely in the shader, so there is no contour geometry to manage.
 [Tool]
 public partial class TopographicView : ColorRect
 {
-    [Export] public TopographicSettings Settings { get; set; }
     [Export] public Texture2D HeightBuffer { get; set; }
 
     // Per-cell contour segment texture (from the compositor). The shader samples it for
@@ -20,10 +21,10 @@ public partial class TopographicView : ColorRect
 
     public override void _Ready() => Apply();
 
-    // Push the settings and buffer into the shader uniforms. Safe to call repeatedly.
+    // Bind the runtime textures into the shader uniforms. Safe to call repeatedly.
     public void Apply()
     {
-        if (Mat == null || Settings == null)
+        if (Mat == null)
         {
             return;
         }
@@ -37,20 +38,11 @@ public partial class TopographicView : ColorRect
         {
             Mat.SetShaderParameter("segments", SegmentBuffer);
         }
-
-        Mat.SetShaderParameter("color_ramp", Settings.ColorRamp);
-        Mat.SetShaderParameter("height_min", Settings.HeightMin);
-        Mat.SetShaderParameter("height_max", Settings.HeightMax);
-        Mat.SetShaderParameter("contour_interval", Settings.ContourInterval);
-        Mat.SetShaderParameter("major_every", (float)Settings.MajorEvery);
-        Mat.SetShaderParameter("minor_width_px", Settings.MinorWidthPx);
-        Mat.SetShaderParameter("major_width_px", Settings.MajorWidthPx);
-        Mat.SetShaderParameter("contour_darken", Settings.ContourDarken);
     }
 
-    // Center and span are in buffer-UV space. px_per_uv converts the SDF distance (in
-    // UV units) to screen pixels at the current zoom, so lines stay a constant screen
-    // width: one UV unit spans Size.X / span screen pixels.
+    // Center and span are in buffer-UV space. px_per_uv converts a UV-space distance to
+    // screen pixels at the current zoom, so lines stay a constant screen width: one UV unit
+    // spans Size.X / span screen pixels.
     public void SetWindow(Vector2 center, float span)
     {
         if (Mat == null)

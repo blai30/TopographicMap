@@ -10,7 +10,6 @@
 [ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic_style.gdshader" id="70_style"]
 [ext_resource type="Script" uid="uid://b7b3cae10e5sx" path="res://addons/topographic/TopographicView.cs" id="72_view"]
-[ext_resource type="Resource" uid="uid://c8topo0settin" path="res://TopoDemo/assets/topographic_settings.tres" id="73_settings"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.28, 0.45, 0.75, 1)
@@ -67,6 +66,11 @@ shader_parameter/height_max = 110.0
 shader_parameter/contour_interval = 10.0
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(0.143, 0.143)
+shader_parameter/px_per_uv = 1.0
+shader_parameter/major_every = 5.0
+shader_parameter/minor_width_px = 1.1
+shader_parameter/major_width_px = 1.9
+shader_parameter/contour_darken = 0.6
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_marker_overlay"]
 shader = ExtResource("40_marker")
@@ -81,6 +85,11 @@ shader_parameter/height_max = 110.0
 shader_parameter/contour_interval = 10.0
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(1, 1)
+shader_parameter/px_per_uv = 1.0
+shader_parameter/major_every = 5.0
+shader_parameter/minor_width_px = 1.1
+shader_parameter/major_width_px = 1.9
+shader_parameter/contour_darken = 0.6
 
 [node name="Demo" type="Node3D" unique_id=2147396049]
 
@@ -180,7 +189,6 @@ offset_right = -20.0
 offset_bottom = 276.0
 mouse_filter = 2
 script = ExtResource("72_view")
-Settings = ExtResource("73_settings")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/Minimap" unique_id=730020001]
 material = SubResource("ShaderMaterial_marker_overlay")
@@ -205,7 +213,6 @@ offset_right = 900.0
 offset_bottom = 900.0
 mouse_filter = 2
 script = ExtResource("72_view")
-Settings = ExtResource("73_settings")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/WorldMap/WorldMapImage" unique_id=730020002]
 material = SubResource("ShaderMaterial_marker_overlay")

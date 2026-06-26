@@ -27,6 +27,13 @@ public partial class TopographicCompositorEffect : CompositorEffect
     // pixel. The compositor owns the underlying RD texture and sets this wrapper's RID.
     public Texture2Drd SegmentTexture { get; } = new();
 
+    // True once the first render callback has produced the real segment texture. Consumers
+    // should wait for this before drawing, so they never sample before the producer runs
+    // (drawing the segment sampler before its RID is live trips a "set (1)" draw error). Set
+    // on the rendering thread, read on the main thread, hence volatile.
+    private volatile bool _hasProduced;
+    public bool HasProduced => _hasProduced;
+
     private RenderingDevice _rd;
     private Rid _heightShader, _heightPipeline;
     private Rid _seedShader, _seedPipeline;
@@ -60,6 +67,13 @@ public partial class TopographicCompositorEffect : CompositorEffect
             RepeatV = RenderingDevice.SamplerRepeatMode.ClampToEdge
         };
         _depthSampler = _rd.SamplerCreate(nearest);
+
+        // Give SegmentTexture a valid RID up front. A consumer view binds this wrapper at
+        // _Ready, before the first render populates the real segment texture; an empty RID
+        // would make the canvas shader fail to supply its sampler uniform on that first draw
+        // ("Uniforms were never supplied for set (1)"). A 1x1 placeholder avoids that window
+        // and is replaced at the real buffer size on the first render callback.
+        CreateSegmentTexture(new(1, 1));
 
         _ready = _depthSampler.IsValid;
     }
@@ -111,8 +125,11 @@ public partial class TopographicCompositorEffect : CompositorEffect
             return;
         }
 
-        FreeRid(_segments);
+        CreateSegmentTexture(size);
+    }
 
+    private void CreateSegmentTexture(Vector2I size)
+    {
         // StorageBit so the seed compute pass can write it, SamplingBit so the canvas shader
         // can sample it. Wrap it in the exposed Texture2Drd for consumers to bind.
         var fmt = new RDTextureFormat
@@ -127,8 +144,14 @@ public partial class TopographicCompositorEffect : CompositorEffect
             UsageBits = RenderingDevice.TextureUsageBits.StorageBit | RenderingDevice.TextureUsageBits.SamplingBit
                                                                     | RenderingDevice.TextureUsageBits.CanUpdateBit
         };
+
+        // Repoint the Texture2Drd to the new texture BEFORE freeing the previous rd_texture.
+        // The wrapper still references the old RID, so freeing it first would leave the
+        // setter operating on a freed RID ("Attempted to free invalid ID" / double free).
+        var previous = _segments;
         _segments = _rd.TextureCreate(fmt, new(), new());
         SegmentTexture.TextureRdRid = _segments;
+        FreeRid(previous);
         _segSize = size;
     }
 
@@ -208,5 +231,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
             _rd.ComputeListEnd();
         }
+
+        _hasProduced = true;
     }
 }
