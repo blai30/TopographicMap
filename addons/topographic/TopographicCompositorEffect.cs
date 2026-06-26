@@ -25,7 +25,8 @@ public partial class TopographicCompositorEffect : CompositorEffect
     // Optional pre-seed blur of the height buffer, in buffer texels. 0 = off (no blur, current
     // behavior). Higher values give smoother, flowing contours on rough terrain. Smooths the
     // tint bands and the contour lines together since both read the same buffer.
-    [Export(PropertyHint.Range, "0,8,1,prefer_slider")] public int ContourSmoothness = 0;
+    [Export(PropertyHint.Range, "0,8,1,prefer_slider")]
+    public int ContourSmoothness = 0;
 
     // Persistent per-cell contour segment texture, wrapped as a Texture2D so the canvas
     // shader can sample it directly and compute exact (vector) line distance per display
@@ -191,7 +192,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
     {
         byte[] bytes = new byte[32];
         Buffer.BlockCopy(new float[] { size.X, size.Y }, 0, bytes, 0, 8);
-        Buffer.BlockCopy(new int[] { dir.X, dir.Y, radius, 0, 0, 0 }, 0, bytes, 8, 24);
+        Buffer.BlockCopy(new[] { dir.X, dir.Y, radius, 0, 0, 0 }, 0, bytes, 8, 24);
         return bytes;
     }
 

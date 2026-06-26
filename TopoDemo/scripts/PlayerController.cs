@@ -12,7 +12,6 @@ public partial class PlayerController : CharacterBody3D
     [Export] public float MaxPitch = 0.4f;
 
     [Export] public Node3D CameraPivot;
-    [Export] public Node3D Body;
 
     private float _gravity = (float)ProjectSettings.GetSetting("physics/3d/default_gravity");
     private float _pitch;
@@ -32,9 +31,11 @@ public partial class PlayerController : CharacterBody3D
     {
         if (inputEvent is InputEventMouseMotion motion && Input.MouseMode == Input.MouseModeEnum.Captured)
         {
-            CameraPivot.RotateY(-motion.Relative.X * MouseSensitivity);
+            // Yaw turns the whole body (kept upright, rotation stays on Y); the camera pivot
+            // only pitches. MapUi reads the body's yaw to rotate the player marker.
+            RotateY(-motion.Relative.X * MouseSensitivity);
             _pitch = Mathf.Clamp(_pitch - motion.Relative.Y * MouseSensitivity, MinPitch, MaxPitch);
-            CameraPivot.Rotation = new(_pitch, CameraPivot.Rotation.Y, 0.0f);
+            CameraPivot.Rotation = new(_pitch, 0.0f, 0.0f);
         }
 
         if (inputEvent.IsActionPressed("ui_cancel"))
@@ -59,14 +60,11 @@ public partial class PlayerController : CharacterBody3D
         }
 
         var input = Input.GetVector("move_left", "move_right", "move_forward", "move_back");
-        float yaw = CameraPivot.Rotation.Y;
+        float yaw = Rotation.Y;
         var forward = new Vector3(-Mathf.Sin(yaw), 0.0f, -Mathf.Cos(yaw));
         var right = new Vector3(Mathf.Cos(yaw), 0.0f, -Mathf.Sin(yaw));
-        // input.Y is positive for "back", so subtracting forward maps W to camera forward.
+        // input.Y is positive for "back", so subtracting forward maps W to the facing direction.
         var direction = (right * input.X - forward * input.Y).Normalized();
-
-        // Face the camera direction so the body and its parented map marker show heading.
-        Body.Rotation = new(0.0f, yaw, 0.0f);
 
         float speed = Input.IsActionPressed("sprint") ? SprintSpeed : MoveSpeed;
         if (direction.LengthSquared() > 0.001f)

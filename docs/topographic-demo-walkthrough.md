@@ -28,13 +28,14 @@ The minimap sits in the top-right corner the whole time. Press `M` to open the w
 Demo (Node3D)
 ├── Sun, WorldEnvironment                  scene lighting and sky
 ├── Water (MeshInstance3D)                 water plane (water_material -> water.gdshader)
-├── Terrain (MeshInstance3D)               the continent mesh, on visual layer 2
-├── TerrainBody / TerrainCollision         static collision (baked terrain_collision.res)
+├── Terrain (StaticBody3D)                 static collision (baked terrain_collision.res)
+│   ├── MeshInstance3D                        the continent mesh, on visual layer 2
+│   └── CollisionShape3D
 ├── MapView (SubViewport, use_hdr_2d)      <- the PRODUCER lives here
 │   └── TopDownCamera (Camera3D, ortho)       cull_mask = layer 2, Compositor attached
-├── Player (CharacterBody3D)               PlayerController; Body node carries the heading
-│   ├── CameraPivot (SpringArm3D) / MainCamera
-│   └── Body / BodyMesh
+├── Player (CharacterBody3D)               PlayerController; the body itself carries the heading
+│   ├── CollisionShape3D / MeshInstance3D
+│   └── CameraPivot (SpringArm3D) / MainCamera
 └── Hud (CanvasLayer)
     └── MapUi (Control)                    <- the CONSUMER orchestration lives here
         ├── Minimap (ColorRect)               ShaderMaterial_minimap (topographic.gdshader)
@@ -87,7 +88,7 @@ godot --headless --path . --script res://TopoDemo/scripts/TerrainBaker.cs
 
 ### `scripts/PlayerController.cs`
 
-A standard first-person `CharacterBody3D` controller (move, sprint, jump, mouse-look with a third-person spring arm). The one detail that matters for the map: it rotates the `Body` node to the movement heading, and `MapUi` reads that node's yaw to rotate the player marker on both maps.
+A standard first-person `CharacterBody3D` controller (move, sprint, jump, mouse-look with a third-person spring arm). The one detail that matters for the map: yaw rotates the body itself (the camera pivot only pitches), and `MapUi` reads the body's yaw to rotate the player marker on both maps.
 
 ## How the data flows (concrete recap)
 
@@ -95,7 +96,7 @@ A standard first-person `CharacterBody3D` controller (move, sprint, jump, mouse-
 2. `TopographicCompositorEffect` (on that camera) runs its two compute passes once, producing the height buffer (the SubViewport color texture) and the segment texture (`SegmentTexture`).
 3. At `_Ready`, `MapUi` binds those two textures into both map materials.
 4. Each frame, `MapUi` sets each map's window: the minimap to a small window centered on the player, the world map to its current pan/zoom window. The shader samples the height buffer and segment texture over that window and draws the tint and contour lines.
-5. `MapUi` places each marker `ColorRect` at the player's screen position within the window and rotates it to the `Body` heading.
+5. `MapUi` places each marker `ColorRect` at the player's screen position within the window and rotates it to the player's heading.
 
 The producer runs once because the terrain is static. If you made the terrain dynamic, you would raise the SubViewport's update mode and the map would follow automatically, with no other change.
 

@@ -29,7 +29,6 @@ public partial class MapUi : Control
 
     [Export] public Control MinimapMarker;
     [Export] public Control WorldMapMarker;
-    [Export] public Node3D PlayerBody;
     [Export] public float MarkerScreenSize = 24.0f;
 
     private float _zoom = 1.8f;
@@ -62,10 +61,10 @@ public partial class MapUi : Control
         marker.PivotOffset = marker.Size * 0.5f;
     }
 
-    // Player heading as a Control rotation. Body yaw is rotation about Y; on the
+    // Player heading as a Control rotation. The player's yaw is rotation about Y; on the
     // top-down map, screen rotation runs opposite world yaw. Flip the sign if the
     // arrow points the wrong way.
-    private float MarkerRotation() => -PlayerBody.GlobalRotation.Y;
+    private float MarkerRotation() => -Player.GlobalRotation.Y;
 
     public override void _Process(double delta)
     {
