@@ -46,18 +46,11 @@ public partial class TopographicCompositorEffect : CompositorEffect
     {
         EffectCallbackType = EffectCallbackTypeEnum.PreTransparent;
         _rd = RenderingServer.GetRenderingDevice();
-        if (_rd == null)
-        {
-            return;
-        }
+        if (_rd == null) return;
 
-        bool ok =
-            LoadShader("res://addons/topographic/topographic.glsl", out _heightShader, out _heightPipeline)
-            && LoadShader("res://addons/topographic/contour_seed.glsl", out _seedShader, out _seedPipeline);
-        if (!ok)
-        {
-            return;
-        }
+        bool ok = LoadShader("res://addons/topographic/topographic.glsl", out _heightShader, out _heightPipeline) &&
+                  LoadShader("res://addons/topographic/contour_seed.glsl", out _seedShader, out _seedPipeline);
+        if (!ok) return;
 
         var nearest = new RDSamplerState
         {
@@ -74,7 +67,6 @@ public partial class TopographicCompositorEffect : CompositorEffect
         // ("Uniforms were never supplied for set (1)"). A 1x1 placeholder avoids that window
         // and is replaced at the real buffer size on the first render callback.
         CreateSegmentTexture(new(1, 1));
-
         _ready = _depthSampler.IsValid;
     }
 
@@ -83,16 +75,10 @@ public partial class TopographicCompositorEffect : CompositorEffect
         shader = new();
         pipeline = new();
         var shaderFile = GD.Load<RDShaderFile>(path);
-        if (shaderFile == null)
-        {
-            return false;
-        }
+        if (shaderFile == null) return false;
 
         shader = _rd.ShaderCreateFromSpirV(shaderFile.GetSpirV());
-        if (!shader.IsValid)
-        {
-            return false;
-        }
+        if (!shader.IsValid) return false;
 
         pipeline = _rd.ComputePipelineCreate(shader);
         return pipeline.IsValid;
@@ -112,19 +98,12 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
     private void FreeRid(Rid rid)
     {
-        if (rid.IsValid)
-        {
-            _rd.FreeRid(rid);
-        }
+        if (rid.IsValid) _rd.FreeRid(rid);
     }
 
     private void EnsureSegmentTexture(Vector2I size)
     {
-        if (_segments.IsValid && _segSize == size)
-        {
-            return;
-        }
-
+        if (_segments.IsValid && _segSize == size) return;
         CreateSegmentTexture(size);
     }
 
@@ -141,15 +120,15 @@ public partial class TopographicCompositorEffect : CompositorEffect
             ArrayLayers = 1,
             Mipmaps = 1,
             TextureType = RenderingDevice.TextureType.Type2D,
-            UsageBits = RenderingDevice.TextureUsageBits.StorageBit | RenderingDevice.TextureUsageBits.SamplingBit
-                                                                    | RenderingDevice.TextureUsageBits.CanUpdateBit
+            UsageBits = RenderingDevice.TextureUsageBits.StorageBit | RenderingDevice.TextureUsageBits.SamplingBit |
+                        RenderingDevice.TextureUsageBits.CanUpdateBit
         };
 
         // Repoint the Texture2Drd to the new texture BEFORE freeing the previous rd_texture.
         // The wrapper still references the old RID, so freeing it first would leave the
         // setter operating on a freed RID ("Attempted to free invalid ID" / double free).
         var previous = _segments;
-        _segments = _rd.TextureCreate(fmt, new(), new());
+        _segments = _rd.TextureCreate(fmt, new(), []);
         SegmentTexture.TextureRdRid = _segments;
         FreeRid(previous);
         _segSize = size;
@@ -171,21 +150,11 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
     public override void _RenderCallback(int effectCallbackType, RenderData renderData)
     {
-        if (!_ready || effectCallbackType != (int)EffectCallbackTypeEnum.PreTransparent)
-        {
-            return;
-        }
-
-        if (renderData.GetRenderSceneBuffers() is not RenderSceneBuffersRD sceneBuffers)
-        {
-            return;
-        }
+        if (!_ready || effectCallbackType != (int)EffectCallbackTypeEnum.PreTransparent) return;
+        if (renderData.GetRenderSceneBuffers() is not RenderSceneBuffersRD sceneBuffers) return;
 
         var size = sceneBuffers.GetInternalSize();
-        if (size.X == 0 || size.Y == 0)
-        {
-            return;
-        }
+        if (size.X == 0 || size.Y == 0) return;
 
         EnsureSegmentTexture(size);
 

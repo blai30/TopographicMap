@@ -3,17 +3,19 @@ using Godot;
 namespace TopographicMap.TopoDemo;
 
 // Drives the HUD map. The corner minimap and the full-screen world map are both
-// TopographicView nodes (ColorRects running the unified topographic shader) over the
-// shared height buffer (the MapView SubViewport texture). Each sets a sampling window
-// (center + span in buffer-UV space): the minimap is a fixed player-centered window,
-// the world map is a zoom/pan window. The world map is kept a centered square so the
-// square world is not stretched on a non-square screen.
+// ColorRects running the unified topographic shader over the shared height buffer (the
+// MapView SubViewport texture). This script feeds each ColorRect's ShaderMaterial the
+// runtime inputs the material cannot hold: the shared height buffer, the per-cell contour
+// segment texture, and a sampling window (center + span in buffer-UV space) with the
+// constant-line-width scale. The minimap is a fixed player-centered window; the world map
+// is a zoom/pan window kept a centered square so the square world is not stretched on a
+// non-square screen.
 public partial class MapUi : Control
 {
     [Export] public SubViewport MapViewport;
     [Export] public TopographicCompositorEffect MapCompositor;
-    [Export] public TopographicView Minimap;
-    [Export] public TopographicView WorldMapImage;
+    [Export] public ColorRect Minimap;
+    [Export] public ColorRect WorldMapImage;
     [Export] public Control WorldMapRoot;
     [Export] public Node3D Player;
     [Export] public float TerrainSize = 1536.0f;
@@ -39,12 +41,8 @@ public partial class MapUi : Control
     {
         var heightBuffer = MapViewport.GetTexture();
         var segments = MapCompositor?.SegmentTexture;
-        Minimap.HeightBuffer = heightBuffer;
-        Minimap.SegmentBuffer = segments;
-        Minimap.Apply();
-        WorldMapImage.HeightBuffer = heightBuffer;
-        WorldMapImage.SegmentBuffer = segments;
-        WorldMapImage.Apply();
+        BindTextures(Minimap, heightBuffer, segments);
+        BindTextures(WorldMapImage, heightBuffer, segments);
 
         WorldMapRoot.Visible = false;
 
@@ -74,10 +72,7 @@ public partial class MapUi : Control
         if (!_minimapRevealed)
         {
             // Wait for the producer's first render before showing the minimap.
-            if (MapCompositor != null && !MapCompositor.HasProduced)
-            {
-                return;
-            }
+            if (MapCompositor is { HasProduced: false }) return;
 
             _minimapRevealed = true;
             Minimap.Visible = !WorldMapRoot.Visible;
@@ -97,10 +92,7 @@ public partial class MapUi : Control
             return;
         }
 
-        if (!WorldMapRoot.Visible)
-        {
-            return;
-        }
+        if (!WorldMapRoot.Visible) return;
 
         switch (inputEvent)
         {
@@ -152,7 +144,7 @@ public partial class MapUi : Control
     private void UpdateMinimap()
     {
         float span = MinimapWorldSpan / TerrainSize;
-        Minimap.SetWindow(WorldToUv(Player.GlobalPosition), span);
+        SetWindow(Minimap, WorldToUv(Player.GlobalPosition), span);
 
         // The minimap is always centered on the player, so the marker sits at center.
         MinimapMarker.Position = Minimap.Size * 0.5f - MinimapMarker.Size * 0.5f;
@@ -170,7 +162,7 @@ public partial class MapUi : Control
     private void UpdateWorldMap()
     {
         float span = WindowSpan();
-        WorldMapImage.SetWindow(_panUv, span);
+        SetWindow(WorldMapImage, _panUv, span);
 
         // Place the marker at the player's position within the current window; hide
         // it when the player is outside the visible area.
@@ -185,8 +177,37 @@ public partial class MapUi : Control
     // Fraction of the world the world-map window spans at the current zoom.
     private float WindowSpan() => Mathf.Min(1.0f, 1.0f / _zoom);
 
-    private Vector2 WorldToUv(Vector3 world) =>
-        new(world.X / TerrainSize + 0.5f, world.Z / TerrainSize + 0.5f);
+    private Vector2 WorldToUv(Vector3 world) => new(world.X / TerrainSize + 0.5f, world.Z / TerrainSize + 0.5f);
+
+    // Bind the runtime textures the material can't hold into a map's shader. Safe to call
+    // repeatedly; tolerates a null segment texture before the compositor's first render.
+    private static void BindTextures(ColorRect view, Texture2D height, Texture2D segments)
+    {
+        if (view.Material is not ShaderMaterial mat) return;
+
+        if (height != null)
+        {
+            mat.SetShaderParameter("height_buffer", height);
+        }
+
+        if (segments != null)
+        {
+            mat.SetShaderParameter("segments", segments);
+        }
+    }
+
+    // Set a map's sampling window. Center and span are in buffer-UV space. px_per_uv
+    // converts a UV-space distance to screen pixels at the current zoom so lines stay a
+    // constant screen width: one UV unit spans view.Size.X / span screen pixels.
+    private static void SetWindow(ColorRect view, Vector2 center, float span)
+    {
+        if (view.Material is not ShaderMaterial mat) return;
+
+        float clampedSpan = Mathf.Max(span, 0.00001f);
+        mat.SetShaderParameter("window_center", center);
+        mat.SetShaderParameter("window_span", new Vector2(clampedSpan, clampedSpan));
+        mat.SetShaderParameter("px_per_uv", view.Size.X / clampedSpan);
+    }
 
     // Zoom while keeping the world point under screenPos fixed on screen.
     private void ZoomAt(Vector2 screenPos, float factor)
@@ -195,7 +216,6 @@ public partial class MapUi : Control
         var uvUnderCursor = _panUv + screenUv * WindowSpan();
 
         _zoom = Mathf.Clamp(_zoom * factor, MinZoom, MaxZoom);
-
         _panUv = uvUnderCursor - screenUv * WindowSpan();
         ClampPan();
     }

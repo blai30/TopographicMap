@@ -9,7 +9,6 @@
 [ext_resource type="Shader" uid="uid://c526piefpacph" path="res://addons/topographic/marker_overlay.gdshader" id="40_marker"]
 [ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic_style.gdshader" id="70_style"]
-[ext_resource type="Script" uid="uid://b7b3cae10e5sx" path="res://addons/topographic/TopographicView.cs" id="72_view"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.28, 0.45, 0.75, 1)
@@ -188,7 +187,6 @@ offset_top = 20.0
 offset_right = -20.0
 offset_bottom = 276.0
 mouse_filter = 2
-script = ExtResource("72_view")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/Minimap" unique_id=730020001]
 material = SubResource("ShaderMaterial_marker_overlay")
@@ -212,7 +210,6 @@ layout_mode = 0
 offset_right = 900.0
 offset_bottom = 900.0
 mouse_filter = 2
-script = ExtResource("72_view")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/WorldMap/WorldMapImage" unique_id=730020002]
 material = SubResource("ShaderMaterial_marker_overlay")
