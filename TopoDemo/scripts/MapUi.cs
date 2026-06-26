@@ -3,18 +3,16 @@ using Godot;
 namespace TopographicMap.TopoDemo;
 
 // Drives the HUD map. The corner minimap and the full-screen world map are both
-// ColorRects running the topographic styling shader over the shared height
-// buffer (the MapView SubViewport texture). Each sets a sampling window
-// (center + span in buffer-UV space) so it rasterizes the topographic effect at
-// its own resolution: the minimap is a fixed player-centered window, the world
-// map is a zoom/pan window. Nothing magnifies a pre-rendered image. The world
-// map is kept a centered square so the square world is not stretched on a
-// non-square screen.
+// TopographicView nodes (ColorRects running the unified topographic shader) over the
+// shared height buffer (the MapView SubViewport texture). Each sets a sampling window
+// (center + span in buffer-UV space): the minimap is a fixed player-centered window,
+// the world map is a zoom/pan window. The world map is kept a centered square so the
+// square world is not stretched on a non-square screen.
 public partial class MapUi : Control
 {
     [Export] public SubViewport MapViewport;
-    [Export] public ColorRect Minimap;
-    [Export] public ColorRect WorldMapImage;
+    [Export] public TopographicView Minimap;
+    [Export] public TopographicView WorldMapImage;
     [Export] public Control WorldMapRoot;
     [Export] public Node3D Player;
     [Export] public float TerrainSize = 1536.0f;
@@ -26,27 +24,10 @@ public partial class MapUi : Control
     [Export] public float MaxZoom = 6.0f;
     [Export] public float ZoomStep = 1.15f;
 
-    [Export] public ContourLayer MinimapContours;
-    [Export] public ContourLayer WorldMapContours;
-    [Export] public ContourFieldResource BakedContours;
-
-    // Contour level params, used only by the edit-time bake (the play path reads
-    // them from the baked resource). They match the tint material's height range
-    // and interval so the baked lines land on the tint band edges.
-    private const float ContourHeightMin = -40.0f;
-    private const float ContourHeightMax = 110.0f;
-    private const float ContourInterval = 10.0f;
-    private const int ContourMajorEvery = 5;
-    private const int ContourResolution = 2048;
-    private const string ContourPath = "res://TopoDemo/assets/contours.res";
-
     [Export] public Control MinimapMarker;
     [Export] public Control WorldMapMarker;
     [Export] public Node3D PlayerBody;
     [Export] public float MarkerScreenSize = 24.0f;
-
-    private ShaderMaterial _minimapMat;
-    private ShaderMaterial _worldMat;
 
     private float _zoom = 1.8f;
     private Vector2 _panUv = new(0.5f, 0.5f); // world UV at the world-map window center
@@ -54,42 +35,16 @@ public partial class MapUi : Control
 
     public override void _Ready()
     {
-        _minimapMat = (ShaderMaterial)Minimap.Material;
-        _worldMat = (ShaderMaterial)WorldMapImage.Material;
-
         var heightBuffer = MapViewport.GetTexture();
-        _minimapMat.SetShaderParameter("height_buffer", heightBuffer);
-        _worldMat.SetShaderParameter("height_buffer", heightBuffer);
+        Minimap.HeightBuffer = heightBuffer;
+        Minimap.Apply();
+        WorldMapImage.HeightBuffer = heightBuffer;
+        WorldMapImage.Apply();
 
         WorldMapRoot.Visible = false;
 
         SetupMarker(MinimapMarker);
         SetupMarker(WorldMapMarker);
-
-        if (System.Array.IndexOf(OS.GetCmdlineUserArgs(), "bake-contours") >= 0)
-        {
-            _ = BakeContoursAsync();
-            return;
-        }
-
-        LoadBakedContours();
-    }
-
-    // Edit-time bake: render the height buffer once with a real GPU, extract the
-    // contour field from that buffer (the exact field the tint samples, so the
-    // lines land on the band edges), and save it to the committed contours.res.
-    // The heightmap-derived field is close but differs enough on gentle slopes to
-    // shift the lines off the bands, so the contours must come from the buffer.
-    // Run with: godot --path . res://TopoDemo/scenes/Demo.tscn -- bake-contours
-    private async System.Threading.Tasks.Task BakeContoursAsync()
-    {
-        var field = await ContourSource.BuildFromViewportAsync(MapViewport, ContourHeightMin, ContourHeightMax,
-            ContourInterval, ContourMajorEvery, ContourResolution);
-        var resource = ContourFieldResource.FromField(field, ContourHeightMin, ContourHeightMax, ContourInterval,
-            ContourMajorEvery);
-        var error = ResourceSaver.Save(resource, ContourPath);
-        GD.Print($"Baked contours: {error} -> {ContourPath} ({field.Polylines.Count} polylines)");
-        GetTree().Quit();
     }
 
     private void SetupMarker(Control marker)
@@ -102,24 +57,6 @@ public partial class MapUi : Control
     // top-down map, screen rotation runs opposite world yaw. Flip the sign if the
     // arrow points the wrong way.
     private float MarkerRotation() => -PlayerBody.GlobalRotation.Y;
-
-    // Load the baked contour field and hand it to both layers. Present on the
-    // first frame with no buffer readback. Re-run TerrainBaker after changing the
-    // terrain to regenerate contours.res.
-    private void LoadBakedContours()
-    {
-        if (BakedContours == null)
-        {
-            GD.PrintErr("MapUi: BakedContours is not assigned; run TerrainBaker to bake contours.res.");
-            return;
-        }
-
-        var field = BakedContours.ToField();
-        MinimapContours.Field = field;
-        WorldMapContours.Field = field;
-        MinimapContours.QueueRedraw();
-        WorldMapContours.QueueRedraw();
-    }
 
     public override void _Process(double delta)
     {
@@ -192,9 +129,7 @@ public partial class MapUi : Control
     private void UpdateMinimap()
     {
         float span = MinimapWorldSpan / TerrainSize;
-        _minimapMat.SetShaderParameter("window_center", WorldToUv(Player.GlobalPosition));
-        _minimapMat.SetShaderParameter("window_span", new Vector2(span, span));
-        MinimapContours.SetWindow(WorldToUv(Player.GlobalPosition), span);
+        Minimap.SetWindow(WorldToUv(Player.GlobalPosition), span);
 
         // The minimap is always centered on the player, so the marker sits at center.
         MinimapMarker.Position = Minimap.Size * 0.5f - MinimapMarker.Size * 0.5f;
@@ -212,9 +147,7 @@ public partial class MapUi : Control
     private void UpdateWorldMap()
     {
         float span = WindowSpan();
-        _worldMat.SetShaderParameter("window_center", _panUv);
-        _worldMat.SetShaderParameter("window_span", new Vector2(span, span));
-        WorldMapContours.SetWindow(_panUv, span);
+        WorldMapImage.SetWindow(_panUv, span);
 
         // Place the marker at the player's position within the current window; hide
         // it when the player is outside the visible area.

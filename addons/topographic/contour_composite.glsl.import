@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://dq2wck7ol0np2"
+path="res://.godot/imported/contour_composite.glsl-3cdd202d471f565efaca43e4544b06f9.res"
+
+[deps]
+
+source_file="res://addons/topographic/contour_composite.glsl"
+dest_files=["res://.godot/imported/contour_composite.glsl-3cdd202d471f565efaca43e4544b06f9.res"]
+
+[params]
+

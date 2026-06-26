@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://b02chnwdcfnx7"
+path="res://.godot/imported/contour_jfa.glsl-3cc6b602e9ac7f8643b276cd93cd1783.res"
+
+[deps]
+
+source_file="res://addons/topographic/contour_jfa.glsl"
+dest_files=["res://.godot/imported/contour_jfa.glsl-3cc6b602e9ac7f8643b276cd93cd1783.res"]
+
+[params]
+

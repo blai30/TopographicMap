@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://cpn7kderuwpkj"
+path="res://.godot/imported/contour_seed.glsl-1ddf1541cb478cecaff1ee3a34674639.res"
+
+[deps]
+
+source_file="res://addons/topographic/contour_seed.glsl"
+dest_files=["res://.godot/imported/contour_seed.glsl-1ddf1541cb478cecaff1ee3a34674639.res"]
+
+[params]
+

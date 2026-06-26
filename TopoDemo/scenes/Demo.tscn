@@ -9,8 +9,8 @@
 [ext_resource type="Shader" uid="uid://c526piefpacph" path="res://addons/topographic/marker_overlay.gdshader" id="40_marker"]
 [ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic_style.gdshader" id="70_style"]
-[ext_resource type="Script" uid="uid://ch8h1lwga1tmm" path="res://addons/topographic/ContourLayer.cs" id="72_contour"]
-[ext_resource type="Resource" uid="uid://d1cdv6wtntliy" path="res://TopoDemo/assets/contours.res" id="73_baked"]
+[ext_resource type="Script" uid="uid://b7b3cae10e5sx" path="res://addons/topographic/TopographicView.cs" id="72_view"]
+[ext_resource type="Resource" uid="uid://c8topo0settin" path="res://TopoDemo/assets/topographic_settings.tres" id="73_settings"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.28, 0.45, 0.75, 1)
@@ -149,7 +149,7 @@ cull_mask = 1047551
 
 [node name="Hud" type="CanvasLayer" parent="." unique_id=1778174740]
 
-[node name="MapUi" type="Control" parent="Hud" unique_id=956150903 node_paths=PackedStringArray("MapViewport", "Minimap", "WorldMapImage", "WorldMapRoot", "Player", "MinimapContours", "WorldMapContours", "MinimapMarker", "WorldMapMarker", "PlayerBody")]
+[node name="MapUi" type="Control" parent="Hud" unique_id=956150903 node_paths=PackedStringArray("MapViewport", "Minimap", "WorldMapImage", "WorldMapRoot", "Player", "MinimapMarker", "WorldMapMarker", "PlayerBody")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -163,9 +163,6 @@ Minimap = NodePath("Minimap")
 WorldMapImage = NodePath("WorldMap/WorldMapImage")
 WorldMapRoot = NodePath("WorldMap")
 Player = NodePath("../../Player")
-MinimapContours = NodePath("Minimap/Contours")
-WorldMapContours = NodePath("WorldMap/WorldMapImage/Contours")
-BakedContours = ExtResource("73_baked")
 MinimapMarker = NodePath("Minimap/Marker")
 WorldMapMarker = NodePath("WorldMap/WorldMapImage/Marker")
 PlayerBody = NodePath("../../Player/Body")
@@ -181,17 +178,8 @@ offset_top = 20.0
 offset_right = -20.0
 offset_bottom = 276.0
 mouse_filter = 2
-
-[node name="Contours" type="Control" parent="Hud/MapUi/Minimap" unique_id=730010001]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-script = ExtResource("72_contour")
-ColorRamp = ExtResource("10_wu0y7")
+script = ExtResource("72_view")
+Settings = ExtResource("73_settings")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/Minimap" unique_id=730020001]
 material = SubResource("ShaderMaterial_marker_overlay")
@@ -215,17 +203,8 @@ layout_mode = 0
 offset_right = 900.0
 offset_bottom = 900.0
 mouse_filter = 2
-
-[node name="Contours" type="Control" parent="Hud/MapUi/WorldMap/WorldMapImage" unique_id=730010002]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-script = ExtResource("72_contour")
-ColorRamp = ExtResource("10_wu0y7")
+script = ExtResource("72_view")
+Settings = ExtResource("73_settings")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/WorldMap/WorldMapImage" unique_id=730020002]
 material = SubResource("ShaderMaterial_marker_overlay")
