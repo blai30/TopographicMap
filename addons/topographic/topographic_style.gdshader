@@ -1,11 +1,14 @@
 shader_type canvas_item;
 
-// Per-pixel hypsometric tint sampled from the shared height buffer over a UV
-// window. Contour lines are drawn separately as vector geometry (ContourLayer),
-// so this shader only produces the stepped elevation tint. Elevation is the only
-// concept: low ground (including underwater) takes the gradient's low colors.
+// Per-pixel hypsometric tint plus analytic vector contour lines, sampled from the shared
+// height buffer over a UV window. The contour lines are resolution independent: instead of
+// reading a precomputed distance field, this shader samples the compositor's per-cell
+// contour SEGMENT texture and computes the EXACT point-to-segment distance for the display
+// pixel, so lines stay crisp and constant-width at any zoom with no texel facets. Elevation
+// is the only concept: low ground (including underwater) takes the gradient's low colors.
 
 uniform sampler2D height_buffer : filter_linear, repeat_disable;
+uniform sampler2D segments : filter_nearest, repeat_disable; // per-cell x0,y0,x1,y1 (UV); x0<0 invalid
 uniform sampler2D color_ramp : filter_linear, repeat_disable;
 uniform float height_min = -40.0;
 uniform float height_max = 110.0;
@@ -13,34 +16,60 @@ uniform float contour_interval = 10.0;
 uniform vec2 window_center = vec2(0.5);
 uniform vec2 window_span = vec2(1.0);
 
-// Contour line styling. px_per_uv converts the SDF (distance stored in buffer-UV
-// units) to screen pixels using the current zoom, so the line stays a constant screen
-// width with no per-pixel gradient (which is what makes flat ground robust).
+// Contour line styling. px_per_uv converts a UV-space distance to screen pixels using the
+// current zoom, so the line stays a constant screen width with no per-pixel gradient
+// (which is what makes flat ground robust).
 uniform float px_per_uv = 1.0;
 uniform float major_every = 5.0;
 uniform float minor_width_px = 1.1;
 uniform float major_width_px = 1.9;
 uniform float contour_darken = 0.6;
 
+// Exact distance from point p to segment a-b, all in buffer-UV space.
+float seg_dist(vec2 p, vec4 seg) {
+	vec2 a = seg.xy;
+	vec2 ab = seg.zw - a;
+	float t = clamp(dot(p - a, ab) / max(dot(ab, ab), 1e-12), 0.0, 1.0);
+	return distance(p, a + t * ab);
+}
+
+// Nearest contour-segment distance (UV) to a buffer point, searching the cells around it.
+// The search radius scales with zoom: at high zoom the line spans one cell, at min zoom a
+// constant-width screen line can cover several cells, so widen the neighborhood to match.
+float vector_line_dist(vec2 buffer_uv) {
+	vec2 tex = vec2(textureSize(segments, 0));
+	float max_width_px = max(minor_width_px, major_width_px);
+	int radius = clamp(int(ceil((max_width_px + 1.5) / px_per_uv * tex.x)), 1, 8);
+
+	ivec2 base = ivec2(floor(buffer_uv * tex - 0.5));
+	ivec2 hi = ivec2(tex) - 2; // last cell index (a cell spans px..px+1)
+
+	float best = 1e3;
+	for (int dy = -radius; dy <= radius; dy++) {
+		for (int dx = -radius; dx <= radius; dx++) {
+			ivec2 cell = clamp(base + ivec2(dx, dy), ivec2(0), hi);
+			vec4 seg = texelFetch(segments, cell, 0);
+			if (seg.x < 0.0) { continue; }
+			best = min(best, seg_dist(buffer_uv, seg));
+		}
+	}
+	return best;
+}
+
 void fragment() {
 	vec2 buffer_uv = clamp(window_center + (UV - vec2(0.5)) * window_span, vec2(0.0), vec2(1.0));
-	vec4 buf = texture(height_buffer, buffer_uv);
-	float h = mix(height_min, height_max, buf.r);
+	float h = mix(height_min, height_max, texture(height_buffer, buffer_uv).r);
 	float span = max(0.0001, height_max - height_min);
 
-	// B is the band-parity-signed SDF distance (UV units) to the nearest contour line:
-	// its magnitude is the distance, its sign flips at every line (and only at lines),
-	// so the signed field interpolates linearly through each line and its zero crossing
-	// is sub-texel accurate (lines stay crisp at high zoom). The line's level is the
-	// nearest contour multiple to the local height, so nothing is stored per line.
-	float dist_px = abs(buf.b) * px_per_uv;  // screen-px distance to the nearest line
+	// Exact screen-pixel distance to the nearest contour line for this display pixel.
+	float dist_px = vector_line_dist(buffer_uv) * px_per_uv;
 	float level_index = floor(h / contour_interval + 0.5);
 
-	// Anti-aliased hypsometric tint. A band boundary IS a contour line, so the color
-	// step is placed and anti-aliased at the line (~1px), not at the faceted per-pixel
-	// height threshold, so band edges stay as smooth as the lines and coincide with
-	// them. The side (below/above the nearest line) comes from the local height; the
-	// level/blend jumps at mid-band cancel, so the fill color stays continuous there.
+	// Anti-aliased hypsometric tint. A band boundary IS a contour line, so the color step
+	// is placed and anti-aliased at the line (~1px), not at the faceted per-pixel height
+	// threshold, so band edges stay as smooth as the lines and coincide with them. The side
+	// (below/above the nearest line) comes from the local height; the level/blend jumps at
+	// mid-band cancel, so the fill color stays continuous there.
 	float blend = smoothstep(-0.5, 0.5, dist_px * sign(h - level_index * contour_interval));
 	float t_below = clamp(((level_index - 0.5) * contour_interval - height_min) / span, 0.0, 1.0);
 	float t_above = clamp(((level_index + 0.5) * contour_interval - height_min) / span, 0.0, 1.0);

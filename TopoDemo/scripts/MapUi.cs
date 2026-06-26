@@ -11,6 +11,7 @@ namespace TopographicMap.TopoDemo;
 public partial class MapUi : Control
 {
     [Export] public SubViewport MapViewport;
+    [Export] public TopographicCompositorEffect MapCompositor;
     [Export] public TopographicView Minimap;
     [Export] public TopographicView WorldMapImage;
     [Export] public Control WorldMapRoot;
@@ -36,9 +37,12 @@ public partial class MapUi : Control
     public override void _Ready()
     {
         var heightBuffer = MapViewport.GetTexture();
+        var segments = MapCompositor?.SegmentTexture;
         Minimap.HeightBuffer = heightBuffer;
+        Minimap.SegmentBuffer = segments;
         Minimap.Apply();
         WorldMapImage.HeightBuffer = heightBuffer;
+        WorldMapImage.SegmentBuffer = segments;
         WorldMapImage.Apply();
 
         WorldMapRoot.Visible = false;

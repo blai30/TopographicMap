@@ -12,6 +12,10 @@ public partial class TopographicView : ColorRect
     [Export] public TopographicSettings Settings { get; set; }
     [Export] public Texture2D HeightBuffer { get; set; }
 
+    // Per-cell contour segment texture (from the compositor). The shader samples it for
+    // exact per-pixel vector line distance.
+    [Export] public Texture2D SegmentBuffer { get; set; }
+
     private ShaderMaterial Mat => Material as ShaderMaterial;
 
     public override void _Ready() => Apply();
@@ -27,6 +31,11 @@ public partial class TopographicView : ColorRect
         if (HeightBuffer != null)
         {
             Mat.SetShaderParameter("height_buffer", HeightBuffer);
+        }
+
+        if (SegmentBuffer != null)
+        {
+            Mat.SetShaderParameter("segments", SegmentBuffer);
         }
 
         Mat.SetShaderParameter("color_ramp", Settings.ColorRamp);
