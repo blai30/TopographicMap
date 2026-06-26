@@ -8,21 +8,21 @@ An all-GPU topographic map for Godot: a depth-derived height buffer, a hypsometr
 
 Every map uses a `GradientTexture1D` palette that maps elevation to color, shared by both the hypsometric tint and the contour lines. The addon ships twelve presets (set one on the material's `elevation_gradient`); the same terrain through each:
 
-| `classic_ink`                                             | `sepia_vintage`                                               | `grayscale`                                           |
-| --------------------------------------------------------- | ------------------------------------------------------------- | ----------------------------------------------------- |
-| ![classic_ink preset](screenshots/preset-classic_ink.png) | ![sepia_vintage preset](screenshots/preset-sepia_vintage.png) | ![grayscale preset](screenshots/preset-grayscale.png) |
+| `classic_ink` | `sepia_vintage` | `grayscale` |
+| :-: | :-: | :-: |
+| <img src="screenshots/preset-classic_ink.png" alt="classic_ink preset" width="260"> | <img src="screenshots/preset-sepia_vintage.png" alt="sepia_vintage preset" width="260"> | <img src="screenshots/preset-grayscale.png" alt="grayscale preset" width="260"> |
 
-| `hypsometric_classic`                                                     | `hypsometric_atlas`                                                   | `nautical`                                          |
-| ------------------------------------------------------------------------- | --------------------------------------------------------------------- | --------------------------------------------------- |
-| ![hypsometric_classic preset](screenshots/preset-hypsometric_classic.png) | ![hypsometric_atlas preset](screenshots/preset-hypsometric_atlas.png) | ![nautical preset](screenshots/preset-nautical.png) |
+| `hypsometric_classic` | `hypsometric_atlas` | `nautical` |
+| :-: | :-: | :-: |
+| <img src="screenshots/preset-hypsometric_classic.png" alt="hypsometric_classic preset" width="260"> | <img src="screenshots/preset-hypsometric_atlas.png" alt="hypsometric_atlas preset" width="260"> | <img src="screenshots/preset-nautical.png" alt="nautical preset" width="260"> |
 
-| `heatmap`                                         | `magma`                                       | `alpine`                                        |
-| ------------------------------------------------- | --------------------------------------------- | ----------------------------------------------- |
-| ![heatmap preset](screenshots/preset-heatmap.png) | ![magma preset](screenshots/preset-magma.png) | ![alpine preset](screenshots/preset-alpine.png) |
+| `heatmap` | `magma` | `alpine` |
+| :-: | :-: | :-: |
+| <img src="screenshots/preset-heatmap.png" alt="heatmap preset" width="260"> | <img src="screenshots/preset-magma.png" alt="magma preset" width="260"> | <img src="screenshots/preset-alpine.png" alt="alpine preset" width="260"> |
 
-| `blueprint`                                           | `matrix`                                        | `viridis`                                         |
-| ----------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------- |
-| ![blueprint preset](screenshots/preset-blueprint.png) | ![matrix preset](screenshots/preset-matrix.png) | ![viridis preset](screenshots/preset-viridis.png) |
+| `blueprint` | `matrix` | `viridis` |
+| :-: | :-: | :-: |
+| <img src="screenshots/preset-blueprint.png" alt="blueprint preset" width="260"> | <img src="screenshots/preset-matrix.png" alt="matrix preset" width="260"> | <img src="screenshots/preset-viridis.png" alt="viridis preset" width="260"> |
 
 ## Requirements
 
