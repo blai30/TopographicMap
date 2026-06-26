@@ -15,6 +15,7 @@ PRODUCER (on the orthographic map camera, RGBA16F 2048x2048 SubViewport)
   TopDownCamera (ortho, top-down)  -->  depth buffer
   TopographicCompositorEffect (compute, PreTransparent) runs, in one render callback:
     1. height pass: depth -> color image R = normalized height, G = coverage mask
+    1b. (optional) height blur: separable box blur of R, in place, when ContourSmoothness > 0
     2. seed pass:   per-cell marching squares -> the contour SEGMENT (both endpoints, in
                     UV) crossing each grid cell, written to a persistent segment texture
   Result: the color image holds R = height, G = mask, plus a separate RGBA32F segment
@@ -110,6 +111,11 @@ Analytic vector lines:
 - The distance is in UV units; to get a constant screen width, scale by `px_per_uv = view_size_px / window_span` (screen pixels per UV unit). The line uses a tight 1px anti-alias (`clamp(width - dist_px + 0.5, 0, 1)`), not a wide soft falloff, so it is crisp rather than blurry. No signing is needed: the distance is to the real segment geometry, so it is small only at real lines (no phantom mid-band line).
 - Band-edge quality at high zoom: a hard `floor(h/interval)` band fill shows the buffer's texel facets when zoomed in. Placing and anti-aliasing the band color step at the line (using the same live distance, with side below/above from `sign(h - round(h/interval)*interval)`) makes band edges as smooth as the lines and coincident with them. The level and blend jumps at mid-band cancel, so the fill color stays continuous there. This is safe (it is a fill-edge AA, not a constant-width line, so the flat-ground gradient instability does not apply).
 - Saddle cells (a cell with two contour crossings) are not currently handled: the seed pass stores one segment per cell (the first two crossings found). Saddles are rare at the buffer resolution; handling them would need a second segment per cell.
+
+Optional height smoothing:
+
+- `ContourSmoothness` (compositor export, `0..8` texels, default `0` = off) inserts an optional separable box blur of the height buffer's `R` channel between the height pass and the seed pass (`height_blur.glsl`, run horizontal then vertical through a scratch RGBA16F target back into the color image, with a barrier between each). It is for rough/high-frequency terrain where the raw contours come out jagged.
+- It is done in the producer, on the shared height buffer, on purpose: both the contour lines (seed pass) and the tint bands (consumer sampling `R`) read this same buffer, so blurring it once smooths both together and keeps them aligned, with no change to `contour_seed.glsl` or `topographic.gdshader`. A consumer-side blur would be per-pixel expensive and could not smooth the already-seeded segment lines. The coverage mask `G` is carried through unblurred. When `0`, the blur passes are skipped entirely, so the pipeline is byte-for-byte the original.
 
 ## Performance and load behavior
 

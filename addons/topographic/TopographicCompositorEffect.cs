@@ -22,6 +22,11 @@ public partial class TopographicCompositorEffect : CompositorEffect
     [Export] public float FarPlane = 245.0f;
     [Export] public bool DepthReversed = true;
 
+    // Optional pre-seed blur of the height buffer, in buffer texels. 0 = off (no blur, current
+    // behavior). Higher values give smoother, flowing contours on rough terrain. Smooths the
+    // tint bands and the contour lines together since both read the same buffer.
+    [Export(PropertyHint.Range, "0,8,1,prefer_slider")] public int ContourSmoothness = 0;
+
     // Persistent per-cell contour segment texture, wrapped as a Texture2D so the canvas
     // shader can sample it directly and compute exact (vector) line distance per display
     // pixel. The compositor owns the underlying RD texture and sets this wrapper's RID.
@@ -37,9 +42,12 @@ public partial class TopographicCompositorEffect : CompositorEffect
     private RenderingDevice _rd;
     private Rid _heightShader, _heightPipeline;
     private Rid _seedShader, _seedPipeline;
+    private Rid _blurShader, _blurPipeline;
     private Rid _depthSampler;
     private Rid _segments;
     private Vector2I _segSize;
+    private Rid _blurTemp;
+    private Vector2I _blurTempSize;
     private bool _ready;
 
     public TopographicCompositorEffect()
@@ -49,7 +57,8 @@ public partial class TopographicCompositorEffect : CompositorEffect
         if (_rd == null) return;
 
         bool ok = LoadShader("res://addons/topographic/depth_to_height.glsl", out _heightShader, out _heightPipeline) &&
-                  LoadShader("res://addons/topographic/contour_seed.glsl", out _seedShader, out _seedPipeline);
+                  LoadShader("res://addons/topographic/contour_seed.glsl", out _seedShader, out _seedPipeline) &&
+                  LoadShader("res://addons/topographic/height_blur.glsl", out _blurShader, out _blurPipeline);
         if (!ok) return;
 
         var nearest = new RDSamplerState
@@ -90,10 +99,13 @@ public partial class TopographicCompositorEffect : CompositorEffect
         SegmentTexture.TextureRdRid = new();
         FreeRid(_depthSampler);
         FreeRid(_segments);
+        FreeRid(_blurTemp);
         FreeRid(_heightPipeline);
         FreeRid(_heightShader);
         FreeRid(_seedPipeline);
         FreeRid(_seedShader);
+        FreeRid(_blurPipeline);
+        FreeRid(_blurShader);
     }
 
     private void FreeRid(Rid rid)
@@ -134,6 +146,31 @@ public partial class TopographicCompositorEffect : CompositorEffect
         _segSize = size;
     }
 
+    private void EnsureBlurTemp(Vector2I size)
+    {
+        if (_blurTemp.IsValid && _blurTempSize == size) return;
+
+        // Scratch RGBA16F target for the horizontal blur pass, matching the color image's
+        // format. StorageBit only: the compute passes read and write it, nothing samples it.
+        var fmt = new RDTextureFormat
+        {
+            Format = RenderingDevice.DataFormat.R16G16B16A16Sfloat,
+            Width = (uint)size.X,
+            Height = (uint)size.Y,
+            Depth = 1,
+            ArrayLayers = 1,
+            Mipmaps = 1,
+            TextureType = RenderingDevice.TextureType.Type2D,
+            UsageBits = RenderingDevice.TextureUsageBits.StorageBit
+        };
+
+        // Same set-before-free ordering as CreateSegmentTexture, to avoid a double free.
+        var previous = _blurTemp;
+        _blurTemp = _rd.TextureCreate(fmt, new(), []);
+        FreeRid(previous);
+        _blurTempSize = size;
+    }
+
     private static RDUniform ImageUniform(int binding, Rid image)
     {
         var u = new RDUniform { UniformType = RenderingDevice.UniformType.Image, Binding = binding };
@@ -148,6 +185,16 @@ public partial class TopographicCompositorEffect : CompositorEffect
         return bytes;
     }
 
+    // Push constant for height_blur.glsl: vec2 size (floats) + ivec2 dir + int radius + padding,
+    // packed to 32 bytes (a multiple of 16, as Godot push constants require).
+    private static byte[] BlurPush(Vector2I size, Vector2I dir, int radius)
+    {
+        byte[] bytes = new byte[32];
+        Buffer.BlockCopy(new float[] { size.X, size.Y }, 0, bytes, 0, 8);
+        Buffer.BlockCopy(new int[] { dir.X, dir.Y, radius, 0, 0, 0 }, 0, bytes, 8, 24);
+        return bytes;
+    }
+
     public override void _RenderCallback(int effectCallbackType, RenderData renderData)
     {
         if (!_ready || effectCallbackType != (int)EffectCallbackTypeEnum.PreTransparent) return;
@@ -158,12 +205,17 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
         EnsureSegmentTexture(size);
 
+        bool blur = ContourSmoothness > 0;
+        if (blur) EnsureBlurTemp(size);
+
         uint xGroups = ((uint)size.X - 1) / 8 + 1;
         uint yGroups = ((uint)size.Y - 1) / 8 + 1;
 
         byte[] heightPush = Floats(size.X, size.Y, CameraY, NearPlane, FarPlane, HeightMin, HeightMax,
             DepthReversed ? 1.0f : 0.0f);
         byte[] seedPush = Floats(size.X, size.Y, HeightMin, HeightMax, ContourInterval, 0f, 0f, 0f);
+        byte[] blurPushH = blur ? BlurPush(size, new(1, 0), ContourSmoothness) : null;
+        byte[] blurPushV = blur ? BlurPush(size, new(0, 1), ContourSmoothness) : null;
 
         uint viewCount = sceneBuffers.GetViewCount();
         for (uint view = 0; view < viewCount; view++)
@@ -191,6 +243,30 @@ public partial class TopographicCompositorEffect : CompositorEffect
             _rd.ComputeListSetPushConstant(list, heightPush, (uint)heightPush.Length);
             _rd.ComputeListDispatch(list, xGroups, yGroups, 1);
             _rd.ComputeListAddBarrier(list);
+
+            // Optional separable box blur of the height buffer, in place: horizontal into the
+            // temp target, then vertical back into the color image. Both the seed pass below
+            // and the consumer shader then read the smoothed height. Skipped entirely when off,
+            // so ContourSmoothness = 0 is byte-for-byte the original pipeline.
+            if (blur)
+            {
+                var blurH = UniformSetCacheRD.GetCache(_blurShader, 0,
+                    [ImageUniform(0, colorImage), ImageUniform(1, _blurTemp)]);
+                var blurV = UniformSetCacheRD.GetCache(_blurShader, 0,
+                    [ImageUniform(0, _blurTemp), ImageUniform(1, colorImage)]);
+
+                _rd.ComputeListBindComputePipeline(list, _blurPipeline);
+                _rd.ComputeListBindUniformSet(list, blurH, 0);
+                _rd.ComputeListSetPushConstant(list, blurPushH, (uint)blurPushH.Length);
+                _rd.ComputeListDispatch(list, xGroups, yGroups, 1);
+                _rd.ComputeListAddBarrier(list);
+
+                _rd.ComputeListBindComputePipeline(list, _blurPipeline);
+                _rd.ComputeListBindUniformSet(list, blurV, 0);
+                _rd.ComputeListSetPushConstant(list, blurPushV, (uint)blurPushV.Length);
+                _rd.ComputeListDispatch(list, xGroups, yGroups, 1);
+                _rd.ComputeListAddBarrier(list);
+            }
 
             // Seed pass: per-cell contour segment into the persistent segment texture.
             _rd.ComputeListBindComputePipeline(list, _seedPipeline);

@@ -113,6 +113,7 @@ These are set from code every frame (see [Using it in a game](#using-it-in-a-gam
 | `CameraY` | The map camera's height (Y). Used to reconstruct world height from depth. |
 | `NearPlane`, `FarPlane` | The map camera's near/far planes. |
 | `DepthReversed` | Whether the depth buffer is reversed-Z (Godot's default is `true`). |
+| `ContourSmoothness` | Optional pre-seed blur of the height buffer, in buffer texels (`0..8`, `0` = off). Smooths rough/high-frequency terrain into flowing contours without altering the terrain itself. Because the lines and the tint bands read the same buffer, both smooth together and stay aligned. Leave at `0` for crisp, exact contours. |
 
 > **Sync note.** `height_min`/`height_max`/`contour_interval` exist in two places: the seed pass uses the compositor's copy to decide where lines fall, and the shader uses the material's copy for the tint and line styling. If they drift, the lines and the color bands stop coinciding. Keep all three values matched across the compositor and every map material.
 
@@ -125,6 +126,7 @@ These are set from code every frame (see [Using it in a game](#using-it-in-a-gam
 - **Fixed-color lines (for example white on a dark palette like `blueprint`):** set `line_color` to the color you want and `line_color_from_gradient = 0`.
 - **Dynamic lines on a dark palette:** keep `line_color_from_gradient = 1` but make `line_gradient_lightness` positive so the lines lighten toward white instead of dying to black.
 - **Shift the line hue away from its band:** nudge `line_gradient_shift` so each line samples a neighboring elevation's color.
+- **Smooth, flowing contours on rough terrain:** raise the compositor's `ContourSmoothness` (try `2..4`). It blurs the height buffer before the seed pass, so the lines and the tint bands smooth together without touching your terrain. Keep it at `0` for crisp, exact contours.
 - **Change the whole color scheme:** swap the `elevation_gradient` for another preset, or edit a `GradientTexture1D` of your own (see [Gradient presets](#gradient-presets)).
 
 ## Using it in a game

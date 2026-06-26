@@ -1,0 +1,14 @@
+[remap]
+
+importer="glsl"
+type="RDShaderFile"
+uid="uid://ckd0kk1yjnpw6"
+path="res://.godot/imported/height_blur.glsl-068260edb7f6aca5c16703f90d8616d3.res"
+
+[deps]
+
+source_file="res://addons/topographic/height_blur.glsl"
+dest_files=["res://.godot/imported/height_blur.glsl-068260edb7f6aca5c16703f90d8616d3.res"]
+
+[params]
+
