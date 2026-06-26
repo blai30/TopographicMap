@@ -57,7 +57,7 @@ public static class ContourFieldSerializer
             {
                 float x = pointsXy[offset++];
                 float y = pointsXy[offset++];
-                points.Add(new ContourPoint(x, y));
+                points.Add(new(x, y));
                 minX = Math.Min(minX, x);
                 minY = Math.Min(minY, y);
                 maxX = Math.Max(maxX, x);

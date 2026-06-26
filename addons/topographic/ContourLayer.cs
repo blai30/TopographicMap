@@ -20,6 +20,7 @@ public partial class ContourLayer : Control
     /// down to fade the lines will instead re-enable dynamic coloring.
     /// </summary>
     [Export] public Color ContourLineColor = new(0f, 0f, 0f, 0f);
+
     [Export] public GradientTexture1D ColorRamp;
     [Export] public float ContourLightness = 0.7f;
 

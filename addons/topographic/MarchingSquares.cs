@@ -22,86 +22,104 @@ public static class MarchingSquares
         {
             for (int cx = 0; cx < cols - 1; cx++)
             {
-                int iTl = cy * cols + cx;
-                int iTr = cy * cols + cx + 1;
-                int iBr = (cy + 1) * cols + cx + 1;
-                int iBl = (cy + 1) * cols + cx;
-
-                if (mask[iTl] < 0.5f || mask[iTr] < 0.5f || mask[iBr] < 0.5f || mask[iBl] < 0.5f)
-                {
-                    continue;
-                }
-
-                float hTl = field[iTl], hTr = field[iTr], hBr = field[iBr], hBl = field[iBl];
-                int code = (hTl > level ? 1 : 0) | (hTr > level ? 2 : 0)
-                                                 | (hBr > level ? 4 : 0) | (hBl > level ? 8 : 0);
-                if (code is 0 or 15)
-                {
-                    continue;
-                }
-
-                switch (code)
-                {
-                    case 1: Seg(Left(), Top()); break;
-                    case 2: Seg(Top(), Right()); break;
-                    case 3: Seg(Left(), Right()); break;
-                    case 4: Seg(Right(), Bottom()); break;
-                    case 5:
-                        Seg(Left(), Top());
-                        Seg(Right(), Bottom());
-                        break;
-                    case 6: Seg(Top(), Bottom()); break;
-                    case 7: Seg(Left(), Bottom()); break;
-                    case 8: Seg(Bottom(), Left()); break;
-                    case 9: Seg(Top(), Bottom()); break;
-                    case 10:
-                        Seg(Left(), Bottom());
-                        Seg(Top(), Right());
-                        break;
-                    case 11: Seg(Right(), Bottom()); break;
-                    case 12: Seg(Left(), Right()); break;
-                    case 13: Seg(Top(), Right()); break;
-                    case 14: Seg(Left(), Top()); break;
-                }
-
-                continue;
-
-                // Canonical edge crossings (a is always the lower row-major corner).
-                ContourPoint Cross(int ax, int ay, int bx, int by)
-                {
-                    float va = field[ay * cols + ax];
-                    float vb = field[by * cols + bx];
-                    float t = (level - va) / (vb - va);
-                    float x = (ax + (bx - ax) * t) / (cols - 1);
-                    float y = (ay + (by - ay) * t) / (rows - 1);
-                    return new(x, y);
-                }
-
-                ContourPoint Top() => Cross(cx, cy, cx + 1, cy);
-                ContourPoint Right() => Cross(cx + 1, cy, cx + 1, cy + 1);
-                ContourPoint Bottom() => Cross(cx, cy + 1, cx + 1, cy + 1);
-                ContourPoint Left() => Cross(cx, cy, cx, cy + 1);
-
-                void Seg(ContourPoint a, ContourPoint b)
-                {
-                    segments.Add(a);
-                    segments.Add(b);
-                }
+                EmitCell(segments, field, mask, cols, rows, level, cx, cy);
             }
         }
 
         return segments;
     }
 
-    // Links loose segments into polylines by matching shared endpoints. Endpoints
-    // are quantized to a grid so floating-point near-equal points join cleanly.
+    // Emits the contour segment(s) for the single cell whose top-left corner is
+    // (cx, cy). Skips cells touching background (mask) or lying fully above/below the
+    // level. Crossings use a canonical corner order so a shared edge yields identical
+    // points from both adjacent cells.
+    // The 16-case switch is a marching-squares dispatch table, so the cognitive
+    // complexity inspection (which counts every case) does not usefully apply here.
+    // ReSharper disable once CognitiveComplexity
+    private static void EmitCell(List<ContourPoint> segments, float[] field, float[] mask,
+        int cols, int rows, float level, int cx, int cy)
+    {
+        int iTl = cy * cols + cx;
+        int iTr = cy * cols + cx + 1;
+        int iBr = (cy + 1) * cols + cx + 1;
+        int iBl = (cy + 1) * cols + cx;
+
+        if (mask[iTl] < 0.5f || mask[iTr] < 0.5f || mask[iBr] < 0.5f || mask[iBl] < 0.5f)
+        {
+            return;
+        }
+
+        float hTl = field[iTl], hTr = field[iTr], hBr = field[iBr], hBl = field[iBl];
+        int code = (hTl > level ? 1 : 0) | (hTr > level ? 2 : 0)
+                                         | (hBr > level ? 4 : 0) | (hBl > level ? 8 : 0);
+        if (code is 0 or 15)
+        {
+            return;
+        }
+
+        switch (code)
+        {
+            case 1: Seg(Left(), Top()); break;
+            case 2: Seg(Top(), Right()); break;
+            case 3: Seg(Left(), Right()); break;
+            case 4: Seg(Right(), Bottom()); break;
+            case 5:
+                Seg(Left(), Top());
+                Seg(Right(), Bottom());
+                break;
+            case 6: Seg(Top(), Bottom()); break;
+            case 7: Seg(Left(), Bottom()); break;
+            case 8: Seg(Bottom(), Left()); break;
+            case 9: Seg(Top(), Bottom()); break;
+            case 10:
+                Seg(Left(), Bottom());
+                Seg(Top(), Right());
+                break;
+            case 11: Seg(Right(), Bottom()); break;
+            case 12: Seg(Left(), Right()); break;
+            case 13: Seg(Top(), Right()); break;
+            case 14: Seg(Left(), Top()); break;
+        }
+
+        return;
+
+        // Canonical edge crossings (a is always the lower row-major corner).
+        ContourPoint Cross(int ax, int ay, int bx, int by)
+        {
+            float va = field[ay * cols + ax];
+            float vb = field[by * cols + bx];
+            float t = (level - va) / (vb - va);
+            float x = (ax + (bx - ax) * t) / (cols - 1);
+            float y = (ay + (by - ay) * t) / (rows - 1);
+            return new(x, y);
+        }
+
+        ContourPoint Top() => Cross(cx, cy, cx + 1, cy);
+        ContourPoint Right() => Cross(cx + 1, cy, cx + 1, cy + 1);
+        ContourPoint Bottom() => Cross(cx, cy + 1, cx + 1, cy + 1);
+        ContourPoint Left() => Cross(cx, cy, cx, cy + 1);
+
+        void Seg(ContourPoint a, ContourPoint b)
+        {
+            segments.Add(a);
+            segments.Add(b);
+        }
+    }
+
+    // Links loose segments into polylines by matching shared endpoints.
+    // The chaining state (used/touching) lives in closures over local functions, which
+    // the cognitive complexity inspection folds into this method; the closure form
+    // reads more cleanly than threading that state through static helpers.
+    // ReSharper disable once CognitiveComplexity
     public static List<List<ContourPoint>> ChainSegments(List<ContourPoint> segments)
     {
         int n = segments.Count / 2;
         bool[] used = new bool[n];
 
-        // endpoint key -> list of segment indices touching it
-        var touching = new Dictionary<long, List<int>>();
+        // endpoint -> indices of the segments touching it. A crossing on a shared grid
+        // edge is computed identically from both adjacent cells, so coincident endpoints
+        // are bit-identical and match exactly by value (no quantization needed).
+        var touching = new Dictionary<ContourPoint, List<int>>();
 
         for (int i = 0; i < n; i++)
         {
@@ -153,20 +171,12 @@ public static class MarchingSquares
 
         return result;
 
-        static long Key(ContourPoint p)
-        {
-            long qx = (long)MathF.Round(p.X * 1_000_000f);
-            long qy = (long)MathF.Round(p.Y * 1_000_000f);
-            return qx * 2_000_003L + qy;
-        }
-
         void Register(ContourPoint p, int seg)
         {
-            long k = Key(p);
-            if (!touching.TryGetValue(k, out var list))
+            if (!touching.TryGetValue(p, out var list))
             {
                 list = [];
-                touching[k] = list;
+                touching[p] = list;
             }
 
             list.Add(seg);
@@ -176,7 +186,7 @@ public static class MarchingSquares
         int NextSegment(ContourPoint p, out ContourPoint far)
         {
             far = default;
-            if (!touching.TryGetValue(Key(p), out var list)) return -1;
+            if (!touching.TryGetValue(p, out var list)) return -1;
             foreach (int s in list)
             {
                 if (used[s])
@@ -186,7 +196,7 @@ public static class MarchingSquares
 
                 var e0 = segments[2 * s];
                 var e1 = segments[2 * s + 1];
-                far = Key(e0) == Key(p) ? e1 : e0;
+                far = e0 == p ? e1 : e0;
                 return s;
             }
 
@@ -215,16 +225,7 @@ public static class MarchingSquares
         while (stack.Count > 0)
         {
             (int first, int last) = stack.Pop();
-            float maxDist2 = 0f;
-            int index = -1;
-            for (int i = first + 1; i < last; i++)
-            {
-                float d2 = PointSegmentDistanceSq(points[i], points[first], points[last]);
-                if (!(d2 > maxDist2)) continue;
-                maxDist2 = d2;
-                index = i;
-            }
-
+            (int index, float maxDist2) = FarthestPoint(points, first, last);
             if (index == -1 || !(maxDist2 > eps2)) continue;
             keep[index] = true;
             stack.Push((first, index));
@@ -241,6 +242,23 @@ public static class MarchingSquares
         }
 
         return result;
+    }
+
+    // Index and squared distance of the point farthest from the chord (first, last),
+    // scanning the strictly-interior points. Returns (-1, 0) when none lie between.
+    private static (int Index, float Dist2) FarthestPoint(List<ContourPoint> points, int first, int last)
+    {
+        float maxDist2 = 0f;
+        int index = -1;
+        for (int i = first + 1; i < last; i++)
+        {
+            float d2 = PointSegmentDistanceSq(points[i], points[first], points[last]);
+            if (!(d2 > maxDist2)) continue;
+            maxDist2 = d2;
+            index = i;
+        }
+
+        return (index, maxDist2);
     }
 
     private static float PointSegmentDistanceSq(ContourPoint p, ContourPoint a, ContourPoint b)
