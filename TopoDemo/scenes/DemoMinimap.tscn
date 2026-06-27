@@ -7,6 +7,8 @@
 [ext_resource type="Shape3D" uid="uid://w3o83dpea0if" path="res://TopoDemo/assets/terrain_collision.res" id="8_terraincol"]
 [ext_resource type="Texture2D" uid="uid://rp3xac4hlrdb" path="res://addons/topographic/gradients/hypsometric_atlas.tres" id="10_1lqj8"]
 [ext_resource type="Script" uid="uid://cb6kukq0i4na7" path="res://TopoDemo/scripts/PlayerController.cs" id="20_ypqk8"]
+[ext_resource type="PackedScene" uid="uid://cne4bt35tsk68" path="res://TopoDemo/addons/kenney_space-kit/craft_speederA.glb" id="21_speeder"]
+[ext_resource type="Script" uid="uid://cu27l2pb5clei" path="res://TopoDemo/scripts/Crosshair.cs" id="22_crosshair"]
 [ext_resource type="Shader" uid="uid://c526piefpacph" path="res://addons/topographic/marker_overlay.gdshader" id="40_marker"]
 [ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic.gdshader" id="70_style"]
@@ -49,14 +51,6 @@ background_mode = 1
 
 [sub_resource type="Compositor" id="Compositor_io8mt"]
 compositor_effects = Array[CompositorEffect]([ExtResource("6_hqj3e")])
-
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
-radius = 0.3
-height = 1.8
-
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_player"]
-radius = 0.3
-height = 1.8
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_minimap"]
 shader = ExtResource("70_style")
@@ -139,27 +133,36 @@ size = 1536.0
 near = 80.0
 far = 245.0
 
-[node name="Player" type="CharacterBody3D" parent="." unique_id=1101662163 node_paths=PackedStringArray("CameraPivot")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 36.39908, 0)
+[node name="Player" type="Node3D" parent="." unique_id=1101662163 node_paths=PackedStringArray("CameraPivot", "ShipModel")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -26.47641, 118.727295, 442.12057)
 script = ExtResource("20_ypqk8")
 CameraPivot = NodePath("CameraPivot")
+ShipModel = NodePath("ShipModel")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=299342782]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
-shape = SubResource("CapsuleShape3D_player")
+[node name="ShipModel" type="Marker3D" parent="Player" unique_id=761121702]
+gizmo_extents = 2.0
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Player" unique_id=1981507952]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.9, 0)
-mesh = SubResource("CapsuleMesh_player")
+[node name="craft_speederA" parent="Player/ShipModel" unique_id=178578840 instance=ExtResource("21_speeder")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2, 0, -2)
 
 [node name="CameraPivot" type="SpringArm3D" parent="Player" unique_id=82672783]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2, 0)
 spring_length = 6.0
 
 [node name="MainCamera" type="Camera3D" parent="Player/CameraPivot" unique_id=1154431821]
 cull_mask = 1047551
 
 [node name="Hud" type="CanvasLayer" parent="." unique_id=1778174740]
+
+[node name="Crosshair" type="Control" parent="Hud" unique_id=1712090575]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("22_crosshair")
 
 [node name="MapUi" type="Control" parent="Hud" unique_id=956150903 node_paths=PackedStringArray("MapViewport", "Minimap", "WorldMap", "WorldMapOverlay", "Player", "MinimapMarker", "WorldMapMarker")]
 layout_mode = 3

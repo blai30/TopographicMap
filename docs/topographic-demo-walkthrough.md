@@ -1,6 +1,6 @@
 # Topographic Map: Demo Walkthrough
 
-This is a guided tour of the demo project (`TopoDemo/`). It exists to show the `addons/topographic/` system wired into a real scene: a first-person player walking a baked continent, with a corner minimap and a toggleable full-screen pan/zoom world map. Read this to learn how the pieces connect and where to look when you build your own map.
+This is a guided tour of the demo project (`TopoDemo/`). It exists to show the `addons/topographic/` system wired into a real scene: a free-flying spaceship over a baked continent, with a corner minimap and a toggleable full-screen pan/zoom world map. Read this to learn how the pieces connect and where to look when you build your own map.
 
 If you only want the API, the [addon README](../addons/topographic/README.md) is the reference. If you want the internals and the design reasoning, see the [architecture notes](topographic-map-architecture.md). This document is the bridge between them: how the demo puts the addon to use.
 
@@ -13,10 +13,10 @@ Controls:
 
 | Input | Action |
 | --- | --- |
-| `W` `A` `S` `D` | Move |
-| Mouse | Look |
-| `Shift` | Sprint |
-| `Space` | Jump |
+| `W` `A` `S` `D` | Move horizontally |
+| Mouse | Look (smoothed) |
+| `Space` / `Ctrl` | Ascend / descend |
+| `Shift` | Boost |
 | `M` or `Tab` | Toggle the full-screen world map |
 | `Esc` | Release / recapture the mouse |
 
@@ -33,10 +33,11 @@ Demo (Node3D)
 │   └── CollisionShape3D
 ├── MapView (SubViewport, use_hdr_2d)      <- the PRODUCER lives here
 │   └── TopDownCamera (Camera3D, ortho)       cull_mask = layer 2, Compositor attached
-├── Player (CharacterBody3D)               PlayerController; the body itself carries the heading
-│   ├── CollisionShape3D / MeshInstance3D
+├── Player (Node3D)                        PlayerController; the body itself carries the heading
+│   ├── ShipModel (Marker3D) / craft_speederA   the spaceship model, banked/tilted cosmetically
 │   └── CameraPivot (SpringArm3D) / MainCamera
 └── Hud (CanvasLayer)
+    ├── Crosshair (Control)                center reticle, shown during free-look
     └── MapUi (Control)                    <- the CONSUMER orchestration lives here
         ├── Minimap (ColorRect)               ShaderMaterial_minimap (topographic.gdshader)
         │   └── Marker (ColorRect)             marker_overlay.gdshader
@@ -76,7 +77,7 @@ The ordinary 3D look of the terrain and water in the gameplay view. These are no
 
 ### `assets/heightmap.exr`, `assets/terrain_collision.res`
 
-Static baked outputs: the normalized heightmap that drives the terrain mesh displacement and the collision shape the player walks on. They are committed assets, produced by the baker below. The contour lines do not come from these; they are derived live from the rendered depth buffer.
+Static baked outputs: the normalized heightmap that drives the terrain mesh displacement and the collision shape on the terrain `StaticBody`. The spaceship flies with no collision of its own, but the third-person camera's spring arm still uses this shape to avoid clipping into the ground. They are committed assets, produced by the baker below. The contour lines do not come from these; they are derived live from the rendered depth buffer.
 
 ### `scripts/TerrainBaker.cs` (edit-time only)
 
@@ -88,7 +89,11 @@ godot --headless --path . --script res://TopoDemo/scripts/TerrainBaker.cs
 
 ### `scripts/PlayerController.cs`
 
-A standard first-person `CharacterBody3D` controller (move, sprint, jump, mouse-look with a third-person spring arm). The one detail that matters for the map: yaw rotates the body itself (the camera pivot only pitches), and `MapUi` reads the body's yaw to rotate the player marker on both maps.
+A free-flying 6DOF hover-spaceship built on `Node3D`, with no gravity and no collision: it moves its own transform directly. `W` `A` `S` `D` move horizontally along the body's facing, `Space`/`Ctrl` ascend and descend, `Shift` boosts, and the mouse aims with frame-rate-independent smoothing (it eases the body yaw and camera pitch toward a target instead of snapping 1:1). Velocity is lightly damped toward the input for a hovercraft start and stop. The child `ShipModel` banks into strafes and tilts its nose cosmetically only. The one detail that matters for the map: yaw rotates the body itself (the camera pivot only pitches, and the cosmetic tilt stays on `ShipModel`), so `Player.GlobalRotation.Y` stays a clean heading that `MapUi` reads to rotate the player marker on both maps.
+
+### `scripts/Crosshair.cs`
+
+A small HUD `Control` that draws a center reticle in `_Draw` (four ticks around a gap, plus a center dot). It manages its own visibility: each frame it sets `Visible` to whether the mouse is captured, so the crosshair shows only during free-look play and hides at startup before the first click, on `Esc`, and while the world map is open (all of which release the mouse). It has no dependency on `MapUi`.
 
 ## How the data flows (concrete recap)
 

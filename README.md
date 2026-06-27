@@ -36,7 +36,7 @@ Every map uses a `GradientTexture1D` palette that maps elevation to color, share
 2. Let it build the C# assembly once (or click **Build** / run `dotnet build`).
 3. Press **Play** (F5). `TopoDemo/scenes/DemoMinimap.tscn` is the main scene. To preview the topographic effect on its own, open `TopoDemo/scenes/DemoTerrain.tscn` instead.
 
-Move with `W` `A` `S` `D`, look with the mouse, and press `M` (or `Tab`) to open the full-screen world map. See the [demo walkthrough](docs/topographic-demo-walkthrough.md) for the full controls and a tour.
+Fly the spaceship with `W` `A` `S` `D` (and `Space`/`Ctrl` to ascend and descend, `Shift` to boost), look with the mouse, and press `M` (or `Tab`) to open the full-screen world map. See the [demo walkthrough](docs/topographic-demo-walkthrough.md) for the full controls and a tour.
 
 ## Documentation
 
