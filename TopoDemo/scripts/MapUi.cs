@@ -12,7 +12,6 @@ namespace TopographicMap.TopoDemo;
 // non-square screen.
 public partial class MapUi : Control
 {
-    [Export] public SubViewport MapViewport;
     [Export] public TopographicCompositorEffect MapCompositor;
     [Export] public ColorRect Minimap;
     [Export] public ColorRect WorldMap;
@@ -38,13 +37,8 @@ public partial class MapUi : Control
 
     public override void _Ready()
     {
-        var heightBuffer = MapViewport.GetTexture();
-        var segments = MapCompositor?.SegmentTexture;
-        BindTextures(Minimap, heightBuffer, segments);
-        BindTextures(WorldMap, heightBuffer, segments);
-        BindElevationModel(Minimap, MapCompositor);
-        BindElevationModel(WorldMap, MapCompositor);
-
+        // The TopographicMapView nodes (Minimap, WorldMap) bind their own runtime inputs and
+        // elevation model. This driver owns only the view window, markers, and reveal gating.
         WorldMapOverlay.Visible = false;
 
         // Keep the minimap hidden until the compositor has produced the segment texture
@@ -181,35 +175,6 @@ public partial class MapUi : Control
     private float WindowSpan() => Mathf.Min(1.0f, 1.0f / _zoom);
 
     private Vector2 WorldToUv(Vector3 world) => new(world.X / TerrainSize + 0.5f, world.Z / TerrainSize + 0.5f);
-
-    // Bind the runtime textures the material can't hold into a map's shader. Safe to call
-    // repeatedly; tolerates a null segment texture before the compositor's first render.
-    private static void BindTextures(ColorRect view, Texture2D height, Texture2D segments)
-    {
-        if (view.Material is not ShaderMaterial mat) return;
-
-        if (height != null)
-        {
-            mat.SetShaderParameter("height_buffer", height);
-        }
-
-        if (segments != null)
-        {
-            mat.SetShaderParameter("segments", segments);
-        }
-    }
-
-    // Push the elevation model (height range and contour interval) from the compositor into a
-    // map's shader. The compositor is the single owner; the consumer reads these so the tint
-    // bands and the seeded contour lines always agree. Static, so bound once.
-    private static void BindElevationModel(ColorRect view, TopographicCompositorEffect compositor)
-    {
-        if (compositor == null || view.Material is not ShaderMaterial mat) return;
-
-        mat.SetShaderParameter("height_min", compositor.HeightMin);
-        mat.SetShaderParameter("height_max", compositor.HeightMax);
-        mat.SetShaderParameter("contour_interval", compositor.ContourInterval);
-    }
 
     // Set a map's sampling window. Center and span are in buffer-UV space. px_per_uv
     // converts a UV-space distance to screen pixels at the current zoom so lines stay a
