@@ -64,8 +64,8 @@ public partial class DemoTerrain : Node3D
         _baseMinorWidth = _material.GetShaderParameter("minor_line_width_px").AsSingle();
         _baseMajorWidth = _material.GetShaderParameter("major_line_width_px").AsSingle();
 
-        // The TopographicMapView node binds the runtime inputs (height buffer, segment texture,
-        // elevation model) in both editor and play. This script keeps the compositor reference
+        // The TopoRect material binds the runtime inputs (height buffer, segment texture,
+        // elevation model) in the inspector. This script keeps the compositor reference
         // only to gate the consumer on the producer's first render.
         _effect = (TopographicCompositorEffect)TopDownCamera.Compositor.CompositorEffects[0];
 
@@ -188,7 +188,6 @@ public partial class DemoTerrain : Node3D
         float spanY = banner ? spanX * size.Y / Mathf.Max(size.X, 1f) : spanX;
         _material.SetShaderParameter("window_center", new Vector2(0.5f, 0.5f));
         _material.SetShaderParameter("window_span", new Vector2(spanX, spanY));
-        _material.SetShaderParameter("px_per_uv", size.X / spanX);
     }
 
     // Solid single-color elevation gradient, used to flood the banner field (white for light,
