@@ -5,7 +5,7 @@
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic.gdshader" id="3_topo"]
 [ext_resource type="Script" uid="uid://b1x1hdo5vbqss" path="res://addons/topographic/TopographicCompositorEffect.cs" id="4_1aq06"]
 [ext_resource type="Script" uid="uid://bdtb0iw8an1bu" path="res://TopoDemo/scripts/DemoTerrain.cs" id="5_script"]
-[ext_resource type="Texture2DRD" path="res://TopoDemo/assets/terrain_segment_texture.tres" id="9_segtex"]
+[ext_resource type="Texture2D" path="res://TopoDemo/assets/terrain_segment_texture.tres" id="9_segtex"]
 
 [sub_resource type="ShaderMaterial" id="TerrainMat"]
 render_priority = 0
@@ -51,8 +51,7 @@ colors = PackedColorArray(1, 1, 1, 1, 1, 1, 1, 1)
 gradient = SubResource("Gradient_pjbkq")
 width = 64
 
-[sub_resource type="ViewportTexture" id="ViewportTexture_terrain"]
-resource_local_to_scene = true
+[sub_resource type="ViewportTexture" id="ViewportTexture_1aq06"]
 viewport_path = NodePath("TerrainView")
 
 [sub_resource type="ShaderMaterial" id="TopoMat"]
@@ -66,10 +65,10 @@ shader_parameter/line_color = Color(0, 0, 0, 1)
 shader_parameter/line_color_from_gradient = 0.0
 shader_parameter/line_gradient_lightness = -0.05
 shader_parameter/line_gradient_shift = -0.3
+shader_parameter/height_buffer = SubResource("ViewportTexture_1aq06")
+shader_parameter/segments = ExtResource("9_segtex")
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(0.7, 0.7)
-shader_parameter/height_buffer = SubResource("ViewportTexture_terrain")
-shader_parameter/segments = ExtResource("9_segtex")
 
 [node name="DemoTerrain" type="Node3D" unique_id=2048007341 node_paths=PackedStringArray("TopDownCamera", "TopoRect")]
 script = ExtResource("5_script")

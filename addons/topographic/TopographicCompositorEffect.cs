@@ -38,6 +38,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
     // callback then arms its RID on that same instance. An inspector-assigned .tres replaces this
     // throwaway via the setter (it holds no RD texture, so nothing is leaked).
     private Texture2Drd _segmentTexture = new();
+
     [Export]
     public Texture2Drd SegmentTexture
     {
@@ -144,7 +145,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
     private void EnsureWrapper()
     {
         if (!_ready || _renderingDevice == null) return;
-        _segmentTexture ??= new Texture2Drd();
+        _segmentTexture ??= new();
         if (!_segmentTexture.TextureRdRid.IsValid)
         {
             CreateSegmentTexture(new(1, 1));
