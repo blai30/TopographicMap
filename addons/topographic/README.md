@@ -12,6 +12,7 @@ An all-GPU topographic map for Godot: a depth-derived height buffer, a hypsometr
 - [Parameter reference](#parameter-reference)
 - [Tuning recipes](#tuning-recipes)
 - [Using it in a game](#using-it-in-a-game)
+- [Editor preview](#editor-preview)
 - [Gradient presets](#gradient-presets)
 - [Troubleshooting](#troubleshooting)
 - [See also](#see-also)
@@ -53,7 +54,7 @@ This is the minimum to get a working minimap. The [demo](#see-also) wires up the
 1. **Put the terrain on its own render layer.** Give the terrain `MeshInstance3D` a unique visual layer (for example layer 2) so the map camera can render only the terrain.
 2. **Add the map camera in a SubViewport.** Create a `SubViewport` with `use_hdr_2d = true` (required, see [Troubleshooting](#troubleshooting)), then an orthographic `Camera3D` inside it looking straight down (`projection = Orthographic`, rotated to point down `-Y`). Set the camera `cull_mask` to the terrain layer, its `size` to span the terrain, and `near`/`far` to bracket the terrain's height range. Give the camera an `Environment` override with `background_mode = Color` and a linear tonemap so the stored height is not distorted.
 3. **Attach the producer.** Create a `Compositor`, add a `TopographicCompositorEffect`, and assign the compositor to the camera. Set the compositor's `HeightMin`, `HeightMax`, `ContourInterval`, and the camera-rig params (`CameraY`, `NearPlane`, `FarPlane`, `DepthReversed`) to match your camera.
-4. **Add a map ColorRect.** Put a `ColorRect` in your HUD and give it a `ShaderMaterial` running `topographic.gdshader`. Set the look params (see [Parameter reference](#parameter-reference)); at minimum pick an `elevation_gradient`. The height range and contour interval are owned by the compositor and pushed in at runtime (step 5), so you do not set them on the material.
+4. **Add a map ColorRect.** Put a `ColorRect` in your HUD and give it a `ShaderMaterial` running `topographic.gdshader`. Set the look params (see [Parameter reference](#parameter-reference)); at minimum pick an `elevation_gradient`. The height range and contour interval are owned by the compositor and pushed in at runtime (step 5), so you do not set them on the material. For a live editor preview and automatic binding, use a `TopographicMapView` node instead of a bare `ColorRect` (see [Editor preview](#editor-preview)).
 5. **Bind and drive it from a script.** Once, bind the two runtime textures; every frame, set the window. See [Using it in a game](#using-it-in-a-game) for the code.
 
 ## How it works
@@ -164,6 +165,14 @@ Mapping world position to buffer UV is `buffer_uv = world.xz / terrainSize + 0.5
 
 For a complete, working implementation of both a minimap and a pan/zoom world map (including the constant-width math, the first-frame guard, and the player marker overlay), read `TopoDemo/scripts/MapUi.cs` and follow the [demo walkthrough](../../docs/topographic-demo-walkthrough.md).
 
+## Editor preview
+
+The binding above can run while you author, so the map renders in the editor without pressing Play. Use the `TopographicMapView` node, a `[Tool]` `ColorRect` subclass, in place of a bare map ColorRect: give it the same `ShaderMaterial`, then set its two exports, `Compositor` (the `TopographicCompositorEffect`) and `HeightSource` (the map `SubViewport`). It binds `segments`, `height_buffer`, and the elevation model for you, in the editor and at run time, so you no longer write the "bind once" code above. It does not own the window: a driver still sets `window_center`/`window_span`/`px_per_uv` each frame at run time. In the editor the node derives a preview `px_per_uv` from the `window_span` you author on the material (which also frames the preview).
+
+- The producer's SubViewport must render in the editor for the preview to appear. With `render_target_update_mode = Always` the preview is live; with `Once` it renders when the scene loads.
+- The node clears its injected inputs before a scene save and restores them after, so it does not write runtime values into your material. Texture params clear fully; the four float params settle at their shader defaults (a harmless Godot limitation, since float shader-param overrides cannot be erased).
+- With either export unset the node is inert (no editor preview), so it is safe to drop in before wiring.
+
 ## Gradient presets
 
 `elevation_gradient` takes a `GradientTexture1D` that maps elevation (`height_min`..`height_max`) to color. Ready-made presets live in `gradients/`: `hypsometric_classic`, `hypsometric_atlas`, `alpine`, `sepia_vintage`, `classic_ink`, `grayscale`, `viridis`, `blueprint`, `heatmap`, `magma`, `matrix`, and `nautical`. Drop one into the `elevation_gradient` slot on the material, or duplicate and edit it. The same ramp colors both the bands and the contour lines, so the map stays consistent.
@@ -179,6 +188,7 @@ For a complete, working implementation of both a minimap and a pan/zoom world ma
 | Contour lines never appear / the map is a flat tint | The producer is not running. Confirm the renderer is Forward+, the compositor is on the map camera, the camera `cull_mask` includes the terrain layer, and the camera near/far/size actually frame the terrain. |
 | Lines are invisible on a dark palette | They are gradient-derived and darkening to near-black. Set `line_color_from_gradient = 0` with a `line_color`, or make `line_gradient_lightness` positive. |
 | The terrain changed but the map did not | The producer renders once (`render_target_update_mode = Once`). For dynamic terrain, raise the SubViewport's update mode so the passes re-run. |
+| The map is blank in the editor (not playing) | Use a `TopographicMapView` node with its `Compositor` and `HeightSource` exports set (a bare `ColorRect` has nothing binding its runtime inputs at author time), and make sure the map SubViewport's `render_target_update_mode` renders in the editor. See [Editor preview](#editor-preview). |
 | Renamed an addon file and the project fails to load | Renaming resource files outside the editor leaves stale `.import`/UID caches. Let the editor rescan (reopen it, or run `godot --headless --import`). |
 
 ## See also

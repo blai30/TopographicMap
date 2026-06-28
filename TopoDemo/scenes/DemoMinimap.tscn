@@ -12,6 +12,7 @@
 [ext_resource type="Shader" uid="uid://c526piefpacph" path="res://addons/topographic/marker_overlay.gdshader" id="40_marker"]
 [ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic.gdshader" id="70_style"]
+[ext_resource type="Script" uid="uid://ce2ldv442nr25" path="res://addons/topographic/TopographicMapView.cs" id="71_mapview"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.28, 0.45, 0.75, 1)
@@ -62,6 +63,9 @@ shader_parameter/line_color = Color(1, 1, 1, 1)
 shader_parameter/line_color_from_gradient = 0.0
 shader_parameter/line_gradient_lightness = -0.4
 shader_parameter/line_gradient_shift = 0.0
+shader_parameter/height_min = -40.0
+shader_parameter/height_max = 110.0
+shader_parameter/contour_interval = 10.0
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(0.143, 0.143)
 shader_parameter/px_per_uv = 1.0
@@ -81,6 +85,9 @@ shader_parameter/line_color = Color(1, 1, 1, 1)
 shader_parameter/line_color_from_gradient = 1.0
 shader_parameter/line_gradient_lightness = -0.500000011176
 shader_parameter/line_gradient_shift = -1.1176000014323506e-08
+shader_parameter/height_min = -40.0
+shader_parameter/height_max = 110.0
+shader_parameter/contour_interval = 10.0
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(1, 1)
 shader_parameter/px_per_uv = 1.0
@@ -158,7 +165,7 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("22_crosshair")
 
-[node name="MapUi" type="Control" parent="Hud" unique_id=956150903 node_paths=PackedStringArray("MapViewport", "Minimap", "WorldMap", "WorldMapOverlay", "Player", "MinimapMarker", "WorldMapMarker")]
+[node name="MapUi" type="Control" parent="Hud" unique_id=956150903 node_paths=PackedStringArray("Minimap", "WorldMap", "WorldMapOverlay", "Player", "MinimapMarker", "WorldMapMarker")]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
@@ -167,7 +174,6 @@ grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("60_mapui")
-MapViewport = NodePath("../../MapView")
 MapCompositor = ExtResource("6_hqj3e")
 Minimap = NodePath("Minimap")
 WorldMap = NodePath("WorldMapOverlay/WorldMap")
@@ -176,7 +182,7 @@ Player = NodePath("../../Player")
 MinimapMarker = NodePath("Minimap/Marker")
 WorldMapMarker = NodePath("WorldMapOverlay/WorldMap/Marker")
 
-[node name="Minimap" type="ColorRect" parent="Hud/MapUi" unique_id=1261521365]
+[node name="Minimap" type="ColorRect" parent="Hud/MapUi" unique_id=1261521365 node_paths=PackedStringArray("HeightSource")]
 material = SubResource("ShaderMaterial_minimap")
 clip_contents = true
 layout_mode = 0
@@ -187,6 +193,9 @@ offset_top = 20.0
 offset_right = -20.0
 offset_bottom = 276.0
 mouse_filter = 2
+script = ExtResource("71_mapview")
+Compositor = ExtResource("6_hqj3e")
+HeightSource = NodePath("../../../MapView")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/Minimap" unique_id=730020001]
 material = SubResource("ShaderMaterial_marker_overlay")
@@ -203,13 +212,16 @@ anchor_bottom = 1.0
 mouse_filter = 2
 color = Color(0, 0, 0, 0.6)
 
-[node name="WorldMap" type="ColorRect" parent="Hud/MapUi/WorldMapOverlay" unique_id=819776301]
+[node name="WorldMap" type="ColorRect" parent="Hud/MapUi/WorldMapOverlay" unique_id=819776301 node_paths=PackedStringArray("HeightSource")]
 material = SubResource("ShaderMaterial_worldmap")
 clip_contents = true
 layout_mode = 0
 offset_right = 900.0
 offset_bottom = 900.0
 mouse_filter = 2
+script = ExtResource("71_mapview")
+Compositor = ExtResource("6_hqj3e")
+HeightSource = NodePath("../../../../MapView")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/WorldMapOverlay/WorldMap" unique_id=730020002]
 material = SubResource("ShaderMaterial_marker_overlay")

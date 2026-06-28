@@ -47,6 +47,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
     private Rid _depthSampler;
     private Rid _segments;
     private Vector2I _segmentSize;
+    private Vector2I _maxSize;
     private Rid _blurTemp;
     private Vector2I _blurTempSize;
     private bool _ready;
@@ -97,16 +98,28 @@ public partial class TopographicCompositorEffect : CompositorEffect
     public override void _Notification(int what)
     {
         if (what != NotificationPredelete || _renderingDevice == null) return;
+
+        // Clear the wrapper's RID before the underlying RD texture is freed, or the setter would
+        // operate on a freed RID.
         SegmentTexture.TextureRdRid = new();
-        FreeRid(_depthSampler);
-        FreeRid(_segments);
-        FreeRid(_blurTemp);
-        FreeRid(_heightPipeline);
-        FreeRid(_heightShader);
-        FreeRid(_seedPipeline);
-        FreeRid(_seedShader);
-        FreeRid(_blurPipeline);
-        FreeRid(_blurShader);
+
+        // RenderingDevice.FreeRid must run on the render thread, but predelete runs on the main
+        // thread; freeing directly here errors on mid-session teardown (editor scene switch or C#
+        // recompile). Defer to the render thread, capturing locals so the callback never touches
+        // this dying object.
+        var renderingDevice = _renderingDevice;
+        Rid[] rids =
+        [
+            _depthSampler, _segments, _blurTemp, _heightPipeline, _heightShader,
+            _seedPipeline, _seedShader, _blurPipeline, _blurShader
+        ];
+        RenderingServer.CallOnRenderThread(Callable.From(() =>
+        {
+            foreach (var rid in rids)
+            {
+                if (rid.IsValid) renderingDevice.FreeRid(rid);
+            }
+        }));
     }
 
     private void FreeRid(Rid rid)
@@ -122,8 +135,9 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
     private void CreateSegmentTexture(Vector2I size)
     {
-        // StorageBit so the seed compute pass can write it, SamplingBit so the canvas shader
-        // can sample it. Wrap it in the exposed Texture2Drd for consumers to bind.
+        // StorageBit: the seed pass writes it. SamplingBit: the canvas shader samples it.
+        // CanCopyFromBit: the editor inspector reads it back to thumbnail the bound texture
+        // parameter, which errors without copy-from permission.
         var format = new RDTextureFormat
         {
             Format = RenderingDevice.DataFormat.R32G32B32A32Sfloat,
@@ -134,7 +148,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
             Mipmaps = 1,
             TextureType = RenderingDevice.TextureType.Type2D,
             UsageBits = RenderingDevice.TextureUsageBits.StorageBit | RenderingDevice.TextureUsageBits.SamplingBit |
-                        RenderingDevice.TextureUsageBits.CanUpdateBit
+                        RenderingDevice.TextureUsageBits.CanUpdateBit | RenderingDevice.TextureUsageBits.CanCopyFromBit
         };
 
         // Repoint the Texture2Drd to the new texture BEFORE freeing the previous rd_texture.
@@ -179,6 +193,14 @@ public partial class TopographicCompositorEffect : CompositorEffect
         return uniform;
     }
 
+    private static RDUniform SamplerUniform(int binding, Rid sampler, Rid texture)
+    {
+        var uniform = new RDUniform { UniformType = RenderingDevice.UniformType.SamplerWithTexture, Binding = binding };
+        uniform.AddId(sampler);
+        uniform.AddId(texture);
+        return uniform;
+    }
+
     private static byte[] Floats(params float[] values)
     {
         byte[] bytes = new byte[values.Length * sizeof(float)];
@@ -199,10 +221,22 @@ public partial class TopographicCompositorEffect : CompositorEffect
     public override void _RenderCallback(int effectCallbackType, RenderData renderData)
     {
         if (!_ready || effectCallbackType != (int)EffectCallbackTypeEnum.PreTransparent) return;
-        if (renderData.GetRenderSceneBuffers() is not RenderSceneBuffersRD sceneBuffers) return;
+
+        // Dispose transient RD wrappers (scene buffers here, RDUniforms below) on the render thread.
+        // Left to the GC, their finalizers free RIDs off-thread, spamming "free_rid can only be
+        // called from the render thread" at random idle moments (Godot issue #104263).
+        using var sceneBuffers = renderData.GetRenderSceneBuffers() as RenderSceneBuffersRD;
+        if (sceneBuffers is null) return;
 
         var size = sceneBuffers.GetInternalSize();
         if (size.X == 0 || size.Y == 0) return;
+
+        // The editor also renders this camera at smaller preview resolutions each frame. Recreating
+        // the segment texture per size reassigns its published RID every frame, invalidating
+        // consumer uniform sets (Godot issue #118292) and spamming "set (1)". Lock onto the largest
+        // buffer and skip smaller renders so the RID stays stable.
+        if (size.X * size.Y < _maxSize.X * _maxSize.Y) return;
+        _maxSize = size;
 
         EnsureSegmentTexture(size);
 
@@ -224,17 +258,14 @@ public partial class TopographicCompositorEffect : CompositorEffect
             var colorImage = sceneBuffers.GetColorLayer(view);
             var depthImage = sceneBuffers.GetDepthLayer(view);
 
-            var depthUniform = new RDUniform
-            {
-                UniformType = RenderingDevice.UniformType.SamplerWithTexture,
-                Binding = 1
-            };
-            depthUniform.AddId(_depthSampler);
-            depthUniform.AddId(depthImage);
+            // RDUniform wrappers are disposed via using at scope end (same render-thread reason).
+            using var depthUniform = SamplerUniform(1, _depthSampler, depthImage);
+            using var heightColor = ImageUniform(0, colorImage);
+            var heightSet = UniformSetCacheRD.GetCache(_heightShader, 0, [heightColor, depthUniform]);
 
-            var heightSet = UniformSetCacheRD.GetCache(_heightShader, 0, [ImageUniform(0, colorImage), depthUniform]);
-            var seedSet = UniformSetCacheRD.GetCache(_seedShader, 0,
-                [ImageUniform(0, colorImage), ImageUniform(1, _segments)]);
+            using var seedColor = ImageUniform(0, colorImage);
+            using var seedSegments = ImageUniform(1, _segments);
+            var seedSet = UniformSetCacheRD.GetCache(_seedShader, 0, [seedColor, seedSegments]);
 
             long list = _renderingDevice.ComputeListBegin();
 
@@ -251,10 +282,13 @@ public partial class TopographicCompositorEffect : CompositorEffect
             // so ContourSmoothness = 0 is byte-for-byte the original pipeline.
             if (blur)
             {
-                var blurH = UniformSetCacheRD.GetCache(_blurShader, 0,
-                    [ImageUniform(0, colorImage), ImageUniform(1, _blurTemp)]);
-                var blurV = UniformSetCacheRD.GetCache(_blurShader, 0,
-                    [ImageUniform(0, _blurTemp), ImageUniform(1, colorImage)]);
+                using var blurHColor = ImageUniform(0, colorImage);
+                using var blurHTemp = ImageUniform(1, _blurTemp);
+                var blurH = UniformSetCacheRD.GetCache(_blurShader, 0, [blurHColor, blurHTemp]);
+
+                using var blurVTemp = ImageUniform(0, _blurTemp);
+                using var blurVColor = ImageUniform(1, colorImage);
+                var blurV = UniformSetCacheRD.GetCache(_blurShader, 0, [blurVTemp, blurVColor]);
 
                 _renderingDevice.ComputeListBindComputePipeline(list, _blurPipeline);
                 _renderingDevice.ComputeListBindUniformSet(list, blurH, 0);
