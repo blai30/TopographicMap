@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" uid="uid://b1x1hdo5vbqss" path="res://addons/topographic/TopographicCompositorEffect.cs" id="1_lbrya"]
 [ext_resource type="Texture2DRD" path="res://TopoDemo/assets/map_segment_texture.tres" id="2_seg"]
+[ext_resource type="Texture2DRD" path="res://TopoDemo/assets/map_height_texture.tres" id="3_height"]
 
 [resource]
 resource_local_to_scene = false
@@ -15,3 +16,5 @@ needs_normal_roughness = false
 script = ExtResource("1_lbrya")
 metadata/_custom_type_script = "uid://b1x1hdo5vbqss"
 SegmentTexture = ExtResource("2_seg")
+HeightTexture = ExtResource("3_height")
+BufferSize = Vector2i(2048, 2048)

@@ -65,11 +65,11 @@ Drives the HUD map. The map textures are bound in the inspector (see the scene w
 
 ### `scenes/DemoMinimap.tscn` (the wiring)
 
-The scene that connects everything. The producer side is `MapView` (a `use_hdr_2d` SubViewport at 2048x2048, set to render `Once`) with `TopDownCamera` (orthographic, `cull_mask` = the terrain layer, a linear-tonemap `Environment` override, and the compositor). The consumer side is under `Hud/MapUi`: two `ColorRect`s with their own `ShaderMaterial`s running `topographic.gdshader`, each with a marker child. Each map material binds its inputs entirely in the inspector: `height_buffer` is a `ViewportTexture` of the `MapView` SubViewport, and `segments` is a shared `Texture2DRD` resource (`assets/map_segment_texture.tres`) that is also assigned to the compositor resource's `SegmentTexture`, so the producer writes and the consumers read the same texture with no script in between. `MapUi`'s exports point at the two `ColorRect` nodes and at the compositor resource, the latter only so it can gate the first-frame reveal on `HasProduced`.
+The scene that connects everything. The producer side is `MapView` (a `use_hdr_2d` SubViewport at 2048x2048, set to render `Once`) with `TopDownCamera` (orthographic, `cull_mask` = the terrain layer, a linear-tonemap `Environment` override, and the compositor). The consumer side is under `Hud/MapUi`: two `ColorRect`s with their own `ShaderMaterial`s running `topographic.gdshader`, each with a marker child. Each map material binds its inputs entirely in the inspector: `height_buffer` and `segments` are two shared `Texture2DRD` resources (`assets/map_height_texture.tres` and `assets/map_segment_texture.tres`) that are also assigned to the compositor resource's `HeightTexture` and `SegmentTexture`, so the producer writes and the consumers read the same textures with no script in between. `MapUi`'s exports point at the two `ColorRect` nodes and at the compositor resource, the latter only so it can gate the first-frame reveal on `HasProduced`.
 
 ### `assets/map_view_compositor_effect.tres`
 
-The `TopographicCompositorEffect` resource assigned to the map camera's compositor. Its `HeightMin`/`HeightMax`/`ContourInterval` and camera-rig exports are the producer half of the look; it is the single owner of the height range and interval. No script pushes that elevation model into the materials: the seed pass bakes it into the segment texture's last texel, and the consumer shader reads it back with one `texelFetch`, so there is nothing to match by hand.
+The `TopographicCompositorEffect` resource assigned to the map camera's compositor. Its `HeightMin`/`HeightMax`/`ContourInterval` and camera-rig exports are the producer half of the look; it is the single owner of the height range and interval. Its `HeightTexture` and `SegmentTexture` point at the two shared `Texture2DRD` `.tres` files, and `BufferSize` is set to the SubViewport's `2048x2048` so those textures are allocated at their final size up front (no first-render resize, keeping the editor preview's console clean). No script pushes that elevation model into the materials: the seed pass bakes it into the segment texture's last texel, and the consumer shader reads it back with one `texelFetch`, so there is nothing to match by hand.
 
 ### `assets/terrain_material.tres` + `shaders/terrain.gdshader`, `assets/water_material.tres` + `shaders/water.gdshader`
 
@@ -98,8 +98,8 @@ A small HUD `Control` that draws a center reticle in `_Draw` (four ticks around 
 ## How the data flows (concrete recap)
 
 1. `MapView`'s `TopDownCamera` renders the `Terrain` (layer 2) into the SubViewport. Its depth buffer is the raw input.
-2. `TopographicCompositorEffect` (on that camera) runs its two compute passes once, producing the height buffer (the SubViewport color texture) and the segment texture (`SegmentTexture`).
-3. Both map materials already reference those two textures through the inspector: `height_buffer` is the SubViewport's `ViewportTexture` and `segments` is the shared `Texture2DRD` the compositor writes to. No script binds them.
+2. `TopographicCompositorEffect` (on that camera) runs its two compute passes once, producing the height buffer (`HeightTexture`) and the segment texture (`SegmentTexture`), two `Texture2DRD`s it writes.
+3. Both map materials already reference those two textures through the inspector: `height_buffer` and `segments` are the shared `Texture2DRD`s the compositor writes to. No script binds them.
 4. Each frame, `MapUi` sets each map's window: the minimap to a small window centered on the player, the world map to its current pan/zoom window. The shader samples the height buffer and segment texture over that window and draws the tint and contour lines.
 5. `MapUi` places each marker `ColorRect` at the player's screen position within the window and rotates it to the player's heading.
 

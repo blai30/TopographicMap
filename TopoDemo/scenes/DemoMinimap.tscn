@@ -13,6 +13,7 @@
 [ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic.gdshader" id="70_style"]
 [ext_resource type="Texture2D" path="res://TopoDemo/assets/map_segment_texture.tres" id="72_segtex"]
+[ext_resource type="Texture2D" path="res://TopoDemo/assets/map_height_texture.tres" id="73_heighttex"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.28, 0.45, 0.75, 1)
@@ -53,9 +54,6 @@ background_mode = 1
 [sub_resource type="Compositor" id="Compositor_io8mt"]
 compositor_effects = Array[CompositorEffect]([ExtResource("6_hqj3e")])
 
-[sub_resource type="ViewportTexture" id="ViewportTexture_mini"]
-viewport_path = NodePath("MapView")
-
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_minimap"]
 resource_local_to_scene = true
 shader = ExtResource("70_style")
@@ -67,7 +65,7 @@ shader_parameter/line_color = Color(1, 1, 1, 1)
 shader_parameter/line_color_from_gradient = 0.0
 shader_parameter/line_gradient_lightness = -0.4
 shader_parameter/line_gradient_shift = 0.0
-shader_parameter/height_buffer = SubResource("ViewportTexture_mini")
+shader_parameter/height_buffer = ExtResource("73_heighttex")
 shader_parameter/segments = ExtResource("72_segtex")
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(0.143, 0.143)
@@ -76,9 +74,6 @@ shader_parameter/window_span = Vector2(0.143, 0.143)
 shader = ExtResource("40_marker")
 shader_parameter/marker_color = Color(0.95, 0.15, 0.15, 1)
 shader_parameter/outline_color = Color(1, 1, 1, 1)
-
-[sub_resource type="ViewportTexture" id="ViewportTexture_world"]
-viewport_path = NodePath("MapView")
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_worldmap"]
 resource_local_to_scene = true
@@ -91,7 +86,7 @@ shader_parameter/line_color = Color(1, 1, 1, 1)
 shader_parameter/line_color_from_gradient = 1.0
 shader_parameter/line_gradient_lightness = -0.500000011176
 shader_parameter/line_gradient_shift = -1.1176000014323506e-08
-shader_parameter/height_buffer = SubResource("ViewportTexture_world")
+shader_parameter/height_buffer = ExtResource("73_heighttex")
 shader_parameter/segments = ExtResource("72_segtex")
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(1, 1)

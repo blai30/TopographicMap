@@ -50,6 +50,52 @@ public partial class TopographicCompositorEffect : CompositorEffect
         }
     }
 
+    // Persistent height buffer (R = normalized world height, G = coverage mask), wrapped as a
+    // Texture2Drd so a canvas shader can sample it directly. This replaces reading the map
+    // SubViewport's color back through a ViewportTexture: producer and consumer share this one
+    // .tres instead, which removes the editor's one-frame "ViewportTexture path not yet resolved"
+    // burst (there is no path to resolve, and the wrapper carries a placeholder RID from load so a
+    // consumer's sampler is never bound to an empty RID). See BufferSize for the placeholder sizing
+    // that also avoids the first-render resize. Assign the same shared .tres here and to each
+    // consumer material's height_buffer.
+    private Texture2Drd _heightTexture = new();
+
+    [Export]
+    public Texture2Drd HeightTexture
+    {
+        get => _heightTexture;
+        set
+        {
+            _heightTexture = value;
+            EnsureHeightWrapper();
+        }
+    }
+
+    // Pre-allocate the shared segment and height textures at this size so the first render never
+    // resizes them. A resize reassigns the published Texture2Drd RID, which invalidates a consumer's
+    // uniform set for one frame and trips a "set (1)" draw error (Godot #118292). That is harmless at
+    // runtime (consumers gate on HasProduced) but shows once on a cold editor scene open, where no
+    // gate runs. Set this to the map SubViewport's render size to suppress it. Left at (0,0), a 1x1
+    // placeholder is armed instead and the first render performs the one-time resize.
+    private Vector2I _bufferSize;
+
+    [Export]
+    public Vector2I BufferSize
+    {
+        get => _bufferSize;
+        set
+        {
+            _bufferSize = value;
+            // Export order is not guaranteed, so the texture setters may have already armed a 1x1
+            // stand-in before this ran. Re-arm any armed placeholder at the new size. Safe at load
+            // time: no consumer has drawn yet, so changing the RID costs nothing. After the first real
+            // render the sizes already match, so this is a no-op.
+            if (!_ready || _renderingDevice == null) return;
+            if (_segments.IsValid && _segmentSize != PlaceholderSize()) CreateSegmentTexture(PlaceholderSize());
+            if (_heightImage.IsValid && _heightImageSize != PlaceholderSize()) CreateHeightImage(PlaceholderSize());
+        }
+    }
+
     // True once the first render callback has produced the real segment texture. Consumers
     // should wait for this before drawing, so they never sample before the producer runs
     // (drawing the segment sampler before its RID is live trips a "set (1)" draw error). Set
@@ -64,6 +110,8 @@ public partial class TopographicCompositorEffect : CompositorEffect
     private Rid _depthSampler;
     private Rid _segments;
     private Vector2I _segmentSize;
+    private Rid _heightImage;
+    private Vector2I _heightImageSize;
     private Vector2I _maxSize;
     private Rid _blurTemp;
     private Vector2I _blurTempSize;
@@ -110,9 +158,10 @@ public partial class TopographicCompositorEffect : CompositorEffect
     {
         if (what != NotificationPredelete || _renderingDevice == null) return;
 
-        // Clear the wrapper's RID before the underlying RD texture is freed, or the setter would
+        // Clear the wrappers' RIDs before the underlying RD textures are freed, or the setter would
         // operate on a freed RID.
         if (_segmentTexture != null) _segmentTexture.TextureRdRid = new();
+        if (_heightTexture != null) _heightTexture.TextureRdRid = new();
 
         // RenderingDevice.FreeRid must run on the render thread, but predelete runs on the main
         // thread; freeing directly here errors on mid-session teardown (editor scene switch or C#
@@ -121,7 +170,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
         var renderingDevice = _renderingDevice;
         Rid[] rids =
         [
-            _depthSampler, _segments, _blurTemp, _heightPipeline, _heightShader,
+            _depthSampler, _segments, _heightImage, _blurTemp, _heightPipeline, _heightShader,
             _seedPipeline, _seedShader, _blurPipeline, _blurShader
         ];
         RenderingServer.CallOnRenderThread(Callable.From(() =>
@@ -148,7 +197,25 @@ public partial class TopographicCompositorEffect : CompositorEffect
         _segmentTexture ??= new();
         if (!_segmentTexture.TextureRdRid.IsValid)
         {
-            CreateSegmentTexture(new(1, 1));
+            CreateSegmentTexture(PlaceholderSize());
+        }
+    }
+
+    // Size for the initially armed shared textures: the configured BufferSize when valid, else a 1x1
+    // stand-in. Matching the render size here means the first render finds the size unchanged and skips
+    // the resize that would otherwise reassign the RID (see BufferSize).
+    private Vector2I PlaceholderSize() =>
+        BufferSize is { X: > 0, Y: > 0 } ? BufferSize : new(1, 1);
+
+    // Height-buffer counterpart of EnsureWrapper: guarantee the height Texture2Drd carries a valid
+    // RID before any consumer draws, so its sampler uniform is never empty on the first editor frame.
+    private void EnsureHeightWrapper()
+    {
+        if (!_ready || _renderingDevice == null) return;
+        _heightTexture ??= new();
+        if (!_heightTexture.TextureRdRid.IsValid)
+        {
+            CreateHeightImage(PlaceholderSize());
         }
     }
 
@@ -156,6 +223,38 @@ public partial class TopographicCompositorEffect : CompositorEffect
     {
         if (_segments.IsValid && _segmentSize == size) return;
         CreateSegmentTexture(size);
+    }
+
+    private void EnsureHeightImage(Vector2I size)
+    {
+        if (_heightImage.IsValid && _heightImageSize == size) return;
+        CreateHeightImage(size);
+    }
+
+    private void CreateHeightImage(Vector2I size)
+    {
+        // RGBA16F to match what depth_to_height.glsl writes and the blur/seed passes read. StorageBit:
+        // the compute passes write it. SamplingBit: the canvas shader samples it. CanCopyFromBit lets
+        // the inspector thumbnail the bound texture parameter. Same set-before-free ordering as
+        // CreateSegmentTexture so the wrapper never points at a freed RID.
+        var format = new RDTextureFormat
+        {
+            Format = RenderingDevice.DataFormat.R16G16B16A16Sfloat,
+            Width = (uint)size.X,
+            Height = (uint)size.Y,
+            Depth = 1,
+            ArrayLayers = 1,
+            Mipmaps = 1,
+            TextureType = RenderingDevice.TextureType.Type2D,
+            UsageBits = RenderingDevice.TextureUsageBits.StorageBit | RenderingDevice.TextureUsageBits.SamplingBit |
+                        RenderingDevice.TextureUsageBits.CanUpdateBit | RenderingDevice.TextureUsageBits.CanCopyFromBit
+        };
+
+        var previous = _heightImage;
+        _heightImage = _renderingDevice.TextureCreate(format, new(), []);
+        _heightTexture.TextureRdRid = _heightImage;
+        FreeRid(previous);
+        _heightImageSize = size;
     }
 
     private void CreateSegmentTexture(Vector2I size)
@@ -265,6 +364,8 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
         EnsureWrapper();
         EnsureSegmentTexture(size);
+        EnsureHeightWrapper();
+        EnsureHeightImage(size);
 
         bool blur = ContourSmoothness > 0;
         if (blur) EnsureBlurTemp(size);
@@ -281,15 +382,17 @@ public partial class TopographicCompositorEffect : CompositorEffect
         uint viewCount = sceneBuffers.GetViewCount();
         for (uint view = 0; view < viewCount; view++)
         {
-            var colorImage = sceneBuffers.GetColorLayer(view);
             var depthImage = sceneBuffers.GetDepthLayer(view);
 
             // RDUniform wrappers are disposed via using at scope end (same render-thread reason).
+            // Height + mask go into the dedicated _heightImage (sampled by consumers via its
+            // Texture2Drd), not the SubViewport color: that removes the ViewportTexture readback and
+            // the editor's first-frame path/uniform burst it caused.
             using var depthUniform = SamplerUniform(1, _depthSampler, depthImage);
-            using var heightColor = ImageUniform(0, colorImage);
+            using var heightColor = ImageUniform(0, _heightImage);
             var heightSet = UniformSetCacheRD.GetCache(_heightShader, 0, [heightColor, depthUniform]);
 
-            using var seedColor = ImageUniform(0, colorImage);
+            using var seedColor = ImageUniform(0, _heightImage);
             using var seedSegments = ImageUniform(1, _segments);
             var seedSet = UniformSetCacheRD.GetCache(_seedShader, 0, [seedColor, seedSegments]);
 
@@ -308,12 +411,12 @@ public partial class TopographicCompositorEffect : CompositorEffect
             // so ContourSmoothness = 0 is byte-for-byte the original pipeline.
             if (blur)
             {
-                using var blurHColor = ImageUniform(0, colorImage);
+                using var blurHColor = ImageUniform(0, _heightImage);
                 using var blurHTemp = ImageUniform(1, _blurTemp);
                 var blurH = UniformSetCacheRD.GetCache(_blurShader, 0, [blurHColor, blurHTemp]);
 
                 using var blurVTemp = ImageUniform(0, _blurTemp);
-                using var blurVColor = ImageUniform(1, colorImage);
+                using var blurVColor = ImageUniform(1, _heightImage);
                 var blurV = UniformSetCacheRD.GetCache(_blurShader, 0, [blurVTemp, blurVColor]);
 
                 _renderingDevice.ComputeListBindComputePipeline(list, _blurPipeline);
