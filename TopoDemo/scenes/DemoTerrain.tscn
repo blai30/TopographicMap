@@ -5,6 +5,7 @@
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic.gdshader" id="3_topo"]
 [ext_resource type="Script" uid="uid://b1x1hdo5vbqss" path="res://addons/topographic/TopographicCompositorEffect.cs" id="4_1aq06"]
 [ext_resource type="Script" uid="uid://bdtb0iw8an1bu" path="res://TopoDemo/scripts/DemoTerrain.cs" id="5_script"]
+[ext_resource type="Script" uid="uid://ce2ldv442nr25" path="res://addons/topographic/TopographicMapView.cs" id="6_mapview"]
 
 [sub_resource type="ShaderMaterial" id="TerrainMat"]
 render_priority = 0
@@ -63,9 +64,8 @@ shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(0.7, 0.7)
 shader_parameter/px_per_uv = 1.0
 
-[node name="DemoTerrain" type="Node3D" unique_id=2048007341 node_paths=PackedStringArray("TerrainView", "TopDownCamera", "TopoRect")]
+[node name="DemoTerrain" type="Node3D" unique_id=2048007341 node_paths=PackedStringArray("TopDownCamera", "TopoRect")]
 script = ExtResource("5_script")
-TerrainView = NodePath("TerrainView")
 TopDownCamera = NodePath("TerrainView/TopDownCamera")
 TopoRect = NodePath("Display/TopoRect")
 
@@ -92,8 +92,11 @@ far = 245.0
 
 [node name="Display" type="CanvasLayer" parent="." unique_id=1727094471]
 
-[node name="TopoRect" type="ColorRect" parent="Display" unique_id=783792941]
+[node name="TopoRect" type="ColorRect" parent="Display" unique_id=783792941 node_paths=PackedStringArray("HeightSource")]
 material = SubResource("TopoMat")
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+script = ExtResource("6_mapview")
+Compositor = SubResource("CompositorEffect_ll1kl")
+HeightSource = NodePath("../../TerrainView")

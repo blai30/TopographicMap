@@ -17,7 +17,6 @@ namespace TopographicMap.TopoDemo;
 // Needs a real GPU (the compositor is compute), so do not run with --headless.
 public partial class DemoTerrain : Node3D
 {
-    [Export] public SubViewport TerrainView;
     [Export] public Camera3D TopDownCamera;
     [Export] public ColorRect TopoRect;
 
@@ -62,20 +61,13 @@ public partial class DemoTerrain : Node3D
     public override void _Ready()
     {
         _material = (ShaderMaterial)TopoRect.Material;
-        _material.SetShaderParameter("height_buffer", TerrainView.GetTexture());
         _baseMinorWidth = _material.GetShaderParameter("minor_line_width_px").AsSingle();
         _baseMajorWidth = _material.GetShaderParameter("major_line_width_px").AsSingle();
 
-        // The compositor effect is inlined on the camera in the scene, but its segment texture
-        // only gets a live RID at run time, so bind it to the consumer material here.
+        // The TopographicMapView node binds the runtime inputs (height buffer, segment texture,
+        // elevation model) in both editor and play. This script keeps the compositor reference
+        // only to gate the consumer on the producer's first render.
         _effect = (TopographicCompositorEffect)TopDownCamera.Compositor.CompositorEffects[0];
-        _material.SetShaderParameter("segments", _effect.SegmentTexture);
-
-        // The compositor owns the elevation model (height range and contour interval); push it
-        // into the consumer so the tint and the seeded lines agree. Static, so bound once.
-        _material.SetShaderParameter("height_min", _effect.HeightMin);
-        _material.SetShaderParameter("height_max", _effect.HeightMax);
-        _material.SetShaderParameter("contour_interval", _effect.ContourInterval);
 
         // Keep the consumer hidden until the producer's first render, or it samples the
         // segment texture before its RID is live and trips a "set (1)" draw error.
