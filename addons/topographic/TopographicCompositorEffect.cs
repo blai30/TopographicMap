@@ -28,10 +28,26 @@ public partial class TopographicCompositorEffect : CompositorEffect
     [Export(PropertyHint.Range, "0,8,1,prefer_slider")]
     public int ContourSmoothness = 4;
 
-    // Persistent per-cell contour segment texture, wrapped as a Texture2D so the canvas
-    // shader can sample it directly and compute exact (vector) line distance per display
-    // pixel. The compositor owns the underlying RD texture and sets this wrapper's RID.
-    public Texture2Drd SegmentTexture { get; } = new();
+    // Persistent per-cell contour segment texture, wrapped as a Texture2Drd so a canvas shader
+    // can sample it directly. Assign one shared Texture2Drd .tres here and to each consumer
+    // material's segments uniform to wire the map in the inspector with no script. If left
+    // unassigned, the default internal wrapper below keeps a code-driven consumer working.
+    //
+    // Default to an empty wrapper (no RID yet) so a code-driven consumer that reads SegmentTexture
+    // at _Ready, before the first render, captures a live object rather than null; the render
+    // callback then arms its RID on that same instance. An inspector-assigned .tres replaces this
+    // throwaway via the setter (it holds no RD texture, so nothing is leaked).
+    private Texture2Drd _segmentTexture = new();
+    [Export]
+    public Texture2Drd SegmentTexture
+    {
+        get => _segmentTexture;
+        set
+        {
+            _segmentTexture = value;
+            EnsureWrapper();
+        }
+    }
 
     // True once the first render callback has produced the real segment texture. Consumers
     // should wait for this before drawing, so they never sample before the producer runs
@@ -72,12 +88,6 @@ public partial class TopographicCompositorEffect : CompositorEffect
         };
         _depthSampler = _renderingDevice.SamplerCreate(nearest);
 
-        // Give SegmentTexture a valid RID up front. A consumer view binds this wrapper at
-        // _Ready, before the first render populates the real segment texture; an empty RID
-        // would make the canvas shader fail to supply its sampler uniform on that first draw
-        // ("Uniforms were never supplied for set (1)"). A 1x1 placeholder avoids that window
-        // and is replaced at the real buffer size on the first render callback.
-        CreateSegmentTexture(new(1, 1));
         _ready = _depthSampler.IsValid;
     }
 
@@ -101,7 +111,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
         // Clear the wrapper's RID before the underlying RD texture is freed, or the setter would
         // operate on a freed RID.
-        SegmentTexture.TextureRdRid = new();
+        if (_segmentTexture != null) _segmentTexture.TextureRdRid = new();
 
         // RenderingDevice.FreeRid must run on the render thread, but predelete runs on the main
         // thread; freeing directly here errors on mid-session teardown (editor scene switch or C#
@@ -125,6 +135,20 @@ public partial class TopographicCompositorEffect : CompositorEffect
     private void FreeRid(Rid rid)
     {
         if (rid.IsValid) _renderingDevice.FreeRid(rid);
+    }
+
+    // Guarantee a Texture2Drd wrapper exists and carries a valid RID before any consumer draws.
+    // Called from the SegmentTexture setter (right after an inspector assignment, before the first
+    // frame) and from _RenderCallback (covers the unassigned, code-driven case). Idempotent: once
+    // the RID is valid it does nothing, so it never clobbers the real (or placeholder) texture.
+    private void EnsureWrapper()
+    {
+        if (!_ready || _renderingDevice == null) return;
+        _segmentTexture ??= new Texture2Drd();
+        if (!_segmentTexture.TextureRdRid.IsValid)
+        {
+            CreateSegmentTexture(new(1, 1));
+        }
     }
 
     private void EnsureSegmentTexture(Vector2I size)
@@ -156,7 +180,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
         // setter operating on a freed RID ("Attempted to free invalid ID" / double free).
         var previous = _segments;
         _segments = _renderingDevice.TextureCreate(format, new(), []);
-        SegmentTexture.TextureRdRid = _segments;
+        _segmentTexture.TextureRdRid = _segments;
         FreeRid(previous);
         _segmentSize = size;
     }
@@ -238,6 +262,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
         if (size.X * size.Y < _maxSize.X * _maxSize.Y) return;
         _maxSize = size;
 
+        EnsureWrapper();
         EnsureSegmentTexture(size);
 
         bool blur = ContourSmoothness > 0;
