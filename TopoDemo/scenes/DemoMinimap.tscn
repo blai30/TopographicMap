@@ -12,7 +12,7 @@
 [ext_resource type="Shader" uid="uid://c526piefpacph" path="res://addons/topographic/marker_overlay.gdshader" id="40_marker"]
 [ext_resource type="Script" uid="uid://ku8y1iucj7fs" path="res://TopoDemo/scripts/MapUi.cs" id="60_mapui"]
 [ext_resource type="Shader" uid="uid://do6bmelduhhnx" path="res://addons/topographic/topographic.gdshader" id="70_style"]
-[ext_resource type="Script" uid="uid://ce2ldv442nr25" path="res://addons/topographic/TopographicMapView.cs" id="71_mapview"]
+[ext_resource type="Texture2D" path="res://TopoDemo/assets/map_segment_texture.tres" id="72_segtex"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_top_color = Color(0.28, 0.45, 0.75, 1)
@@ -53,7 +53,11 @@ background_mode = 1
 [sub_resource type="Compositor" id="Compositor_io8mt"]
 compositor_effects = Array[CompositorEffect]([ExtResource("6_hqj3e")])
 
+[sub_resource type="ViewportTexture" id="ViewportTexture_mini"]
+viewport_path = NodePath("MapView")
+
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_minimap"]
+resource_local_to_scene = true
 shader = ExtResource("70_style")
 shader_parameter/elevation_gradient = ExtResource("8_47k30")
 shader_parameter/lines_per_major = 5.0
@@ -63,19 +67,21 @@ shader_parameter/line_color = Color(1, 1, 1, 1)
 shader_parameter/line_color_from_gradient = 0.0
 shader_parameter/line_gradient_lightness = -0.4
 shader_parameter/line_gradient_shift = 0.0
-shader_parameter/height_min = -40.0
-shader_parameter/height_max = 110.0
-shader_parameter/contour_interval = 10.0
+shader_parameter/height_buffer = SubResource("ViewportTexture_mini")
+shader_parameter/segments = ExtResource("72_segtex")
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(0.143, 0.143)
-shader_parameter/px_per_uv = 1.0
 
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_marker_overlay"]
 shader = ExtResource("40_marker")
 shader_parameter/marker_color = Color(0.95, 0.15, 0.15, 1)
 shader_parameter/outline_color = Color(1, 1, 1, 1)
 
+[sub_resource type="ViewportTexture" id="ViewportTexture_world"]
+viewport_path = NodePath("MapView")
+
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_worldmap"]
+resource_local_to_scene = true
 shader = ExtResource("70_style")
 shader_parameter/elevation_gradient = ExtResource("10_1lqj8")
 shader_parameter/lines_per_major = 5.0
@@ -85,12 +91,10 @@ shader_parameter/line_color = Color(1, 1, 1, 1)
 shader_parameter/line_color_from_gradient = 1.0
 shader_parameter/line_gradient_lightness = -0.500000011176
 shader_parameter/line_gradient_shift = -1.1176000014323506e-08
-shader_parameter/height_min = -40.0
-shader_parameter/height_max = 110.0
-shader_parameter/contour_interval = 10.0
+shader_parameter/height_buffer = SubResource("ViewportTexture_world")
+shader_parameter/segments = ExtResource("72_segtex")
 shader_parameter/window_center = Vector2(0.5, 0.5)
 shader_parameter/window_span = Vector2(1, 1)
-shader_parameter/px_per_uv = 1.0
 
 [node name="Demo" type="Node3D" unique_id=2147396049]
 
@@ -182,7 +186,7 @@ Player = NodePath("../../Player")
 MinimapMarker = NodePath("Minimap/Marker")
 WorldMapMarker = NodePath("WorldMapOverlay/WorldMap/Marker")
 
-[node name="Minimap" type="ColorRect" parent="Hud/MapUi" unique_id=1261521365 node_paths=PackedStringArray("HeightSource")]
+[node name="Minimap" type="ColorRect" parent="Hud/MapUi" unique_id=1261521365]
 material = SubResource("ShaderMaterial_minimap")
 clip_contents = true
 layout_mode = 0
@@ -193,9 +197,6 @@ offset_top = 20.0
 offset_right = -20.0
 offset_bottom = 276.0
 mouse_filter = 2
-script = ExtResource("71_mapview")
-Compositor = ExtResource("6_hqj3e")
-HeightSource = NodePath("../../../MapView")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/Minimap" unique_id=730020001]
 material = SubResource("ShaderMaterial_marker_overlay")
@@ -212,16 +213,13 @@ anchor_bottom = 1.0
 mouse_filter = 2
 color = Color(0, 0, 0, 0.6)
 
-[node name="WorldMap" type="ColorRect" parent="Hud/MapUi/WorldMapOverlay" unique_id=819776301 node_paths=PackedStringArray("HeightSource")]
+[node name="WorldMap" type="ColorRect" parent="Hud/MapUi/WorldMapOverlay" unique_id=819776301]
 material = SubResource("ShaderMaterial_worldmap")
 clip_contents = true
 layout_mode = 0
 offset_right = 900.0
 offset_bottom = 900.0
 mouse_filter = 2
-script = ExtResource("71_mapview")
-Compositor = ExtResource("6_hqj3e")
-HeightSource = NodePath("../../../../MapView")
 
 [node name="Marker" type="ColorRect" parent="Hud/MapUi/WorldMapOverlay/WorldMap" unique_id=730020002]
 material = SubResource("ShaderMaterial_marker_overlay")

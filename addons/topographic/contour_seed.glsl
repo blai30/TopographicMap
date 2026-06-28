@@ -28,6 +28,16 @@ void main() {
 	ivec2 px = ivec2(gl_GlobalInvocationID.xy);
 	if (px.x >= int(p.size.x) || px.y >= int(p.size.y)) { return; }
 
+	// Reserve the very last texel for elevation-model metadata. The consumer's line search
+	// clamps cell indices to size-2 (a cell spans px..px+1), so this texel is never read as a
+	// contour segment. The consumer reads height_min/height_max/interval from here, so producer
+	// and consumer cannot drift. The w channel is a 1.0 "produced" flag (0.0 in the zero placeholder).
+	ivec2 last_texel = ivec2(p.size) - 1;
+	if (px == last_texel) {
+		imageStore(seg_out, px, vec4(p.height_min, p.height_max, p.interval, 1.0));
+		return;
+	}
+
 	vec4 invalid = vec4(-1.0);
 	if (px.x + 1 >= int(p.size.x) || px.y + 1 >= int(p.size.y)) { imageStore(seg_out, px, invalid); return; }
 

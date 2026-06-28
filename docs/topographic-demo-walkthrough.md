@@ -46,13 +46,13 @@ Demo (Node3D)
                 └── Marker (ColorRect)         marker_overlay.gdshader
 ```
 
-Two parts matter most. **`MapView`** holds the orthographic top-down camera with the `TopographicCompositorEffect` on its compositor; this is the producer that turns the terrain into the height buffer and segment texture. **`MapUi`** holds the two map `ColorRect`s and the script that binds the producer's outputs into their shaders and drives the pan/zoom window every frame.
+Two parts matter most. **`MapView`** holds the orthographic top-down camera with the `TopographicCompositorEffect` on its compositor; this is the producer that turns the terrain into the height buffer and segment texture. **`MapUi`** holds the two map `ColorRect`s and the script that drives the pan/zoom window every frame and places the markers. The producer's outputs are bound into the map shaders in the inspector, not by any script.
 
 Note the two layers under `WorldMapOverlay`: the overlay itself is a full-screen translucent-black `ColorRect` that dims the game behind the open world map, and `WorldMap` is the actual map (a centered square so the square world is not stretched on a non-square screen).
 
 ## Suggested reading order
 
-1. **`TopoDemo/scripts/MapUi.cs`** first. This is the whole integration in one file: binding the textures, driving the window, placing the markers. If you read one thing, read this.
+1. **`TopoDemo/scripts/MapUi.cs`** first. This is the integration orchestration in one file: driving the window and placing the markers. The texture binding lives in the scene's inspector, not here. If you read one thing, read this.
 2. **`TopoDemo/scenes/DemoMinimap.tscn`** next, in the editor. Select `MapView/TopDownCamera` and look at its Compositor (the producer), then select `Hud/MapUi/Minimap` and `.../WorldMap` and look at their materials (the consumer look params).
 3. **The addon** (`addons/topographic/`): `TopographicCompositorEffect.cs` (the producer) and `topographic.gdshader` (the consumer). The [addon README](../addons/topographic/README.md) explains each parameter.
 4. **`TopoDemo/scripts/TerrainBaker.cs`** last, only if you care how the demo terrain was generated. It is an edit-time tool, not part of the running map.
@@ -61,15 +61,15 @@ Note the two layers under `WorldMapOverlay`: the overlay itself is a full-screen
 
 ### `scripts/MapUi.cs` (the integration centerpiece)
 
-Drives the HUD map. At `_Ready` it binds each map `ColorRect`'s `height_buffer` to the `MapView` viewport texture and `segments` to the compositor's `SegmentTexture` (its `BindTextures` helper). Each frame it computes a sampling window and pushes `window_center`/`window_span`/`px_per_uv` into the right material (its `SetWindow` helper), and positions the marker overlays. The minimap uses a fixed player-centered window; the world map uses a pan/zoom window with drag and scroll handling. It also holds the first-frame guard: the always-visible minimap stays hidden until `MapCompositor.HasProduced` is true, so it never samples the segment texture before the producer has run. This file is the concrete version of the [Using it in a game](../addons/topographic/README.md#using-it-in-a-game) section.
+Drives the HUD map. The map textures are bound in the inspector (see the scene wiring below), not by this script. Each frame it computes a sampling window and pushes `window_center`/`window_span` into the right material (its `SetWindow` helper), and positions the marker overlays. The minimap uses a fixed player-centered window; the world map uses a pan/zoom window with drag and scroll handling. It also holds the first-frame guard: the always-visible minimap stays hidden until `MapCompositor.HasProduced` is true, so it never samples the segment texture before the producer has run, and it keeps the `MapCompositor` reference solely for that gating. This file is the concrete version of the [Using it in a game](../addons/topographic/README.md#using-it-in-a-game) section.
 
 ### `scenes/DemoMinimap.tscn` (the wiring)
 
-The scene that connects everything. The producer side is `MapView` (a `use_hdr_2d` SubViewport at 2048x2048, set to render `Once`) with `TopDownCamera` (orthographic, `cull_mask` = the terrain layer, a linear-tonemap `Environment` override, and the compositor). The consumer side is under `Hud/MapUi`: two `ColorRect`s with their own `ShaderMaterial`s running `topographic.gdshader`, each with a marker child. `MapUi` exports point at these nodes and at the compositor resource so it can read `SegmentTexture`.
+The scene that connects everything. The producer side is `MapView` (a `use_hdr_2d` SubViewport at 2048x2048, set to render `Once`) with `TopDownCamera` (orthographic, `cull_mask` = the terrain layer, a linear-tonemap `Environment` override, and the compositor). The consumer side is under `Hud/MapUi`: two `ColorRect`s with their own `ShaderMaterial`s running `topographic.gdshader`, each with a marker child. Each map material binds its inputs entirely in the inspector: `height_buffer` is a `ViewportTexture` of the `MapView` SubViewport, and `segments` is a shared `Texture2DRD` resource (`assets/map_segment_texture.tres`) that is also assigned to the compositor resource's `SegmentTexture`, so the producer writes and the consumers read the same texture with no script in between. `MapUi`'s exports point at the two `ColorRect` nodes and at the compositor resource, the latter only so it can gate the first-frame reveal on `HasProduced`.
 
 ### `assets/map_view_compositor_effect.tres`
 
-The `TopographicCompositorEffect` resource assigned to the map camera's compositor. Its `HeightMin`/`HeightMax`/`ContourInterval` and camera-rig exports are the producer half of the look; it is the single owner of the height range and interval, which `MapUi` pushes into the two map materials at load, so there is nothing to match by hand.
+The `TopographicCompositorEffect` resource assigned to the map camera's compositor. Its `HeightMin`/`HeightMax`/`ContourInterval` and camera-rig exports are the producer half of the look; it is the single owner of the height range and interval. No script pushes that elevation model into the materials: the seed pass bakes it into the segment texture's last texel, and the consumer shader reads it back with one `texelFetch`, so there is nothing to match by hand.
 
 ### `assets/terrain_material.tres` + `shaders/terrain.gdshader`, `assets/water_material.tres` + `shaders/water.gdshader`
 
@@ -99,7 +99,7 @@ A small HUD `Control` that draws a center reticle in `_Draw` (four ticks around 
 
 1. `MapView`'s `TopDownCamera` renders the `Terrain` (layer 2) into the SubViewport. Its depth buffer is the raw input.
 2. `TopographicCompositorEffect` (on that camera) runs its two compute passes once, producing the height buffer (the SubViewport color texture) and the segment texture (`SegmentTexture`).
-3. At `_Ready`, `MapUi` binds those two textures into both map materials.
+3. Both map materials already reference those two textures through the inspector: `height_buffer` is the SubViewport's `ViewportTexture` and `segments` is the shared `Texture2DRD` the compositor writes to. No script binds them.
 4. Each frame, `MapUi` sets each map's window: the minimap to a small window centered on the player, the world map to its current pan/zoom window. The shader samples the height buffer and segment texture over that window and draws the tint and contour lines.
 5. `MapUi` places each marker `ColorRect` at the player's screen position within the window and rotates it to the player's heading.
 
@@ -108,9 +108,9 @@ The producer runs once because the terrain is static. If you made the terrain dy
 ## Experiments to try
 
 - **Change a palette.** Select `Hud/MapUi/Minimap`, open its material, and swap `elevation_gradient` for another preset from `addons/topographic/gradients/`. Do the same on `WorldMap` to see them differ independently.
-- **Make the contours denser.** Lower `ContourInterval` on `assets/map_view_compositor_effect.tres` (the single owner; `MapUi` pushes it into both map materials at load). Watch the lines multiply.
+- **Make the contours denser.** Lower `ContourInterval` on `assets/map_view_compositor_effect.tres` (the single owner; the seed pass bakes it into the segment texture and the consumer shader reads it back, so both maps follow with nothing to match by hand). Watch the lines multiply.
 - **Recolor the lines.** On a map material, try `line_color_from_gradient = 0` with a `line_color` of your choice for fixed-color lines, or push `line_gradient_lightness` positive on a dark gradient.
-- **Resize the minimap.** Change the `Minimap` `ColorRect`'s size; the lines stay the same screen-pixel width because `px_per_uv` is derived from the view size.
+- **Resize the minimap.** Change the `Minimap` `ColorRect`'s size; the lines stay the same screen-pixel width because the shader derives `px_per_uv` itself as `1.0 / fwidth(UV.x) / window_span.x`. It is not a uniform and nothing pushes it.
 - **Add a third map.** Duplicate the `Minimap` node, give it a new `ShaderMaterial`, add it to `MapUi`'s exports, and drive it with its own window. Two consumers already share one producer, so a third is free.
 - **Regenerate the terrain.** Tweak the noise in `TerrainBaker.cs`, re-run the baker, and reopen the scene. The map updates on its own because the contours are derived from whatever the camera renders.
 

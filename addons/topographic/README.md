@@ -12,7 +12,6 @@ An all-GPU topographic map for Godot: a depth-derived height buffer, a hypsometr
 - [Parameter reference](#parameter-reference)
 - [Tuning recipes](#tuning-recipes)
 - [Using it in a game](#using-it-in-a-game)
-- [Editor preview](#editor-preview)
 - [Gradient presets](#gradient-presets)
 - [Troubleshooting](#troubleshooting)
 - [See also](#see-also)
@@ -53,9 +52,9 @@ This is the minimum to get a working minimap. The [demo](#see-also) wires up the
 
 1. **Put the terrain on its own render layer.** Give the terrain `MeshInstance3D` a unique visual layer (for example layer 2) so the map camera can render only the terrain.
 2. **Add the map camera in a SubViewport.** Create a `SubViewport` with `use_hdr_2d = true` (required, see [Troubleshooting](#troubleshooting)), then an orthographic `Camera3D` inside it looking straight down (`projection = Orthographic`, rotated to point down `-Y`). Set the camera `cull_mask` to the terrain layer, its `size` to span the terrain, and `near`/`far` to bracket the terrain's height range. Give the camera an `Environment` override with `background_mode = Color` and a linear tonemap so the stored height is not distorted.
-3. **Attach the producer.** Create a `Compositor`, add a `TopographicCompositorEffect`, and assign the compositor to the camera. Set the compositor's `HeightMin`, `HeightMax`, `ContourInterval`, and the camera-rig params (`CameraY`, `NearPlane`, `FarPlane`, `DepthReversed`) to match your camera.
-4. **Add a map ColorRect.** Put a `ColorRect` in your HUD and give it a `ShaderMaterial` running `topographic.gdshader`. Set the look params (see [Parameter reference](#parameter-reference)); at minimum pick an `elevation_gradient`. The height range and contour interval are owned by the compositor and pushed in at runtime (step 5), so you do not set them on the material. For a live editor preview and automatic binding, use a `TopographicMapView` node instead of a bare `ColorRect` (see [Editor preview](#editor-preview)).
-5. **Bind and drive it from a script.** Once, bind the two runtime textures; every frame, set the window. See [Using it in a game](#using-it-in-a-game) for the code.
+3. **Attach the producer.** Create a `Compositor`, add a `TopographicCompositorEffect`, and assign the compositor to the camera. Set the compositor's `HeightMin`, `HeightMax`, `ContourInterval`, and the camera-rig params (`CameraY`, `NearPlane`, `FarPlane`, `DepthReversed`) to match your camera. The compositor owns the elevation model and bakes it into the segment texture, so you set the height range and interval here and nowhere else.
+4. **Create the shared segment texture.** Make a `Texture2DRD` resource, save it as a standalone `.tres`, and assign it to the compositor's `SegmentTexture`. This same `.tres` is what each map material samples (step 5), so the producer and every consumer reference one resource.
+5. **Add a map ColorRect and bind it in the inspector.** Put a `ColorRect` in your HUD and give it a `ShaderMaterial` running `topographic.gdshader`. Bind its inputs in the inspector: set `height_buffer` to a `ViewportTexture` of the map `SubViewport`, set `segments` to the shared `Texture2DRD` `.tres` from step 4, and author the look params (at minimum pick an `elevation_gradient`; see [Parameter reference](#parameter-reference)) and the initial `window_center`/`window_span`. The height range and contour interval are not material parameters: the consumer reads them back from the segment texture, so there is nothing to keep in sync. Pan/zoom is your game's own code (see [Using it in a game](#using-it-in-a-game)).
 
 ## How it works
 
@@ -69,7 +68,7 @@ No bake, no `.res` to regenerate, no per-frame CPU cost. Change the terrain and 
 
 ## Parameter reference
 
-The **look** lives on each map's `ShaderMaterial` (the consumer). The **elevation model** (the height range and the contour interval) lives only on the compositor, which is its single owner; a driver script pushes it into each consumer at load, so there is nothing to keep in sync (see the [elevation model note](#elevation-model-note) below).
+The **look** lives on each map's `ShaderMaterial` (the consumer). The **elevation model** (the height range and the contour interval) lives only on the compositor, which is its single owner; the seed pass bakes it into the segment texture and the consumer reads it back, so there is nothing to author on the material and nothing to keep in sync (see the [elevation model note](#elevation-model-note) below).
 
 ### Consumer: `topographic.gdshader` parameters
 
@@ -81,7 +80,7 @@ Grouped in the inspector exactly as below. Hover any parameter in the editor for
 | --- | --- | --- |
 | `elevation_gradient` | (none) | A `GradientTexture1D` mapping elevation to color. Colors both the tint bands and the contour lines. Presets in `gradients/`. |
 
-The height range (`height_min`/`height_max`) that this gradient spans is owned by the compositor and pushed in at runtime; see the **Runtime** group below.
+The height range that this gradient spans is owned by the compositor and baked into the segment texture; see the [elevation model note](#elevation-model-note) below.
 
 **Contours**
 
@@ -100,27 +99,27 @@ The height range (`height_min`/`height_max`) that this gradient spans is owned b
 | `line_gradient_lightness` | -0.05 | -1..1 | For the gradient-derived color: negative darkens toward black, positive lightens toward white. |
 | `line_gradient_shift` | -0.3 | -0.5..0.5 | For the gradient-derived color: offsets where the line samples the gradient, picking a neighboring elevation's hue. |
 
-**Runtime** (`height_min`, `height_max`, `contour_interval`, `height_buffer`, `segments`, `window_center`, `window_span`, `px_per_uv`)
+**Runtime** (`height_buffer`, `segments`, `window_center`, `window_span`)
 
-These are set from code, not authored on the material (see [Using it in a game](#using-it-in-a-game)). The elevation model (`height_min`, `height_max`, `contour_interval`) is pushed once from the compositor's matching exports so it always agrees with the producer; the textures and the window (`window_*`, `px_per_uv`) are bound by the driver script, the window every frame. Do not hand-edit any of them in the inspector; any value you set is overwritten at runtime.
+The two textures are bound in the inspector: `height_buffer` to a `ViewportTexture` of the map `SubViewport`, and `segments` to the shared `Texture2DRD` `.tres` (the same resource assigned to the compositor's `SegmentTexture`). The window (`window_center`/`window_span`) selects the visible region; author an initial value, then a pan/zoom map updates it from the consuming game's own code each frame (see [Using it in a game](#using-it-in-a-game)). The elevation model is not in this group: the consumer reads it back from the segment texture. The screen-pixel-per-UV scale that keeps line width constant is derived in-shader from `fwidth(UV.x)` and `window_span`, so it is not a parameter either.
 
 ### Producer: `TopographicCompositorEffect` exports
 
 | Export | What it does |
 | --- | --- |
-| `HeightMin`, `HeightMax` | The world-height range the height pass normalizes into `[0, 1]`. The single owner of the range; pushed to each consumer's `height_min`/`height_max` at runtime. |
-| `ContourInterval` | World-height step the seed pass uses to place contour segments. The single owner of the interval; pushed to each consumer's `contour_interval` at runtime. |
+| `HeightMin`, `HeightMax` | The world-height range the height pass normalizes into `[0, 1]`. The single owner of the range; baked into the segment texture's metadata texel, which each consumer reads back. |
+| `ContourInterval` | World-height step the seed pass uses to place contour segments. The single owner of the interval; baked into the segment texture's metadata texel, which each consumer reads back. |
 | `CameraY` | The map camera's height (Y). Used to reconstruct world height from depth. |
 | `NearPlane`, `FarPlane` | The map camera's near/far planes. |
 | `DepthReversed` | Whether the depth buffer is reversed-Z (Godot's default is `true`). |
 | `ContourSmoothness` | Optional pre-seed blur of the height buffer, in buffer texels (`0..8`, default `4`; `0` = off). Smooths rough/high-frequency terrain into flowing contours without altering the terrain itself. Because the lines and the tint bands read the same buffer, both smooth together and stay aligned. Set to `0` for crisp, exact contours. |
 
 <a id="elevation-model-note"></a>
-> **Elevation model note.** `height_min`/`height_max`/`contour_interval` are owned solely by the compositor: the seed pass uses them to place the lines, and the consumer needs them for the tint and the line levels. The consumer does not author its own copy. A driver script reads them off the compositor and pushes them into each map material at load, so the lines and the color bands always coincide with nothing to keep in sync. See [Using it in a game](#using-it-in-a-game) for the binding code.
+> **Elevation model note.** `HeightMin`/`HeightMax`/`ContourInterval` are owned solely by the compositor: the seed pass uses them to place the lines, and the consumer needs them for the tint and the line levels. Rather than duplicate them on the material, the seed pass bakes `(height_min, height_max, contour_interval, 1.0)` into the segment texture's last texel and the consumer reads it back with one `texelFetch`. The line search never touches that texel (it clamps cell indices to `size - 2`), so the metadata rides along for free. There is no authored copy on the material and no drift, so the lines and the color bands always coincide.
 
 ## Tuning recipes
 
-- **Denser or sparser contours:** lower or raise `ContourInterval` on the compositor (its single owner; the consumers pick it up at load). Smaller interval = more lines.
+- **Denser or sparser contours:** lower or raise `ContourInterval` on the compositor (its single owner; the consumers read it back from the segment texture). Smaller interval = more lines.
 - **Emphasize index contours:** raise `major_line_width_px` relative to `minor_line_width_px`, and set `lines_per_major` to taste (5 is a common cartographic choice).
 - **Thinner, sharper lines:** lower both width params toward `0.5`. Widths are in screen pixels and stay constant at any zoom.
 - **Classic look (dark lines on a light palette):** keep `line_color_from_gradient = 1` with a light gradient and `line_gradient_lightness` negative (darkens the band color into a line).
@@ -132,28 +131,19 @@ These are set from code, not authored on the material (see [Using it in a game](
 
 ## Using it in a game
 
-The consumer shader needs three things from code: the elevation model and the two runtime textures (bound once from the compositor), and the sampling window (set every frame). Everything else (the gradient and the line styling) lives on the material.
+The textures, the elevation model, the gradient, and the line styling are all wired in the inspector (see [Quickstart](#quickstart)), so the only thing the consuming game's code does is move the sampling window. Pan/zoom and the player marker are your game's own code, not part of the addon; the demo's `MapUi` is a complete example.
 
 ```csharp
-// Bind once (for example in _Ready). Push the elevation model from the compositor, its
-// single owner, so the tint and the seeded lines always agree:
-var material = (ShaderMaterial)mapRect.Material;
-material.SetShaderParameter("height_min", compositor.HeightMin);
-material.SetShaderParameter("height_max", compositor.HeightMax);
-material.SetShaderParameter("contour_interval", compositor.ContourInterval);
-// Bind the runtime textures:
-material.SetShaderParameter("height_buffer", mapViewport.GetTexture());
-material.SetShaderParameter("segments", compositor.SegmentTexture);
-
 // Every frame, set the window the map should show. The window is in buffer-UV space:
 //   center = the buffer-UV point at the middle of the view, each axis in [0, 1]
 //   span   = how much of the buffer to show (1 = the whole map, smaller = zoomed in)
 float span = ...;
 Vector2 center = ...;
+var material = (ShaderMaterial)mapRect.Material;
 material.SetShaderParameter("window_center", center);
 material.SetShaderParameter("window_span", new Vector2(span, span));
-// px_per_uv keeps the line width constant on screen at any zoom:
-material.SetShaderParameter("px_per_uv", mapRect.Size.X / span);
+// The shader derives the screen-pixel-per-UV scale itself from fwidth(UV.x) and
+// window_span, so the line width stays constant at any zoom with no code to push it.
 ```
 
 Mapping world position to buffer UV is `buffer_uv = world.xz / terrainSize + 0.5` (in the demo `terrainSize` is 1536), assuming the map camera is centered on the terrain.
@@ -164,14 +154,6 @@ Mapping world position to buffer UV is `buffer_uv = world.xz / terrainSize + 0.5
 **First-frame caveat.** The compositor renders once at load. A map that is visible at startup will try to sample the segment texture before the producer's first render and fail with "Uniforms were never supplied for set (1)". Guard it: the compositor exposes a `HasProduced` flag; keep any always-visible map hidden until `HasProduced` is true (a map that opens later, like a world map behind a key press, is fine). The demo's `MapUi` does exactly this.
 
 For a complete, working implementation of both a minimap and a pan/zoom world map (including the constant-width math, the first-frame guard, and the player marker overlay), read `TopoDemo/scripts/MapUi.cs` and follow the [demo walkthrough](../../docs/topographic-demo-walkthrough.md).
-
-## Editor preview
-
-The binding above can run while you author, so the map renders in the editor without pressing Play. Use the `TopographicMapView` node, a `[Tool]` `ColorRect` subclass, in place of a bare map ColorRect: give it the same `ShaderMaterial`, then set its two exports, `Compositor` (the `TopographicCompositorEffect`) and `HeightSource` (the map `SubViewport`). It binds `segments`, `height_buffer`, and the elevation model for you, in the editor and at run time, so you no longer write the "bind once" code above. It does not own the window: a driver still sets `window_center`/`window_span`/`px_per_uv` each frame at run time. In the editor the node derives a preview `px_per_uv` from the `window_span` you author on the material (which also frames the preview).
-
-- The producer's SubViewport must render in the editor for the preview to appear. With `render_target_update_mode = Always` the preview is live; with `Once` it renders when the scene loads.
-- The node clears its injected inputs before a scene save and restores them after, so it does not write runtime values into your material. Texture params clear fully; the four float params settle at their shader defaults (a harmless Godot limitation, since float shader-param overrides cannot be erased).
-- With either export unset the node is inert (no editor preview), so it is safe to drop in before wiring.
 
 ## Gradient presets
 
@@ -184,11 +166,12 @@ The binding above can run while you author, so the map renders in the editor wit
 | Contours look terraced or stepped in flat areas | The SubViewport is 8-bit. Set `use_hdr_2d = true` on the map SubViewport so the height is stored at full precision. |
 | Colors or contour heights look wrong or washed out | The map camera is applying scene tonemapping to the stored height. Give the camera an `Environment` override with `background_mode = Color` and a linear (non-ACES) tonemap. |
 | "Uniforms were never supplied for set (1)" on the first frame | A map drew before the producer's first render. Keep always-visible maps hidden until `compositor.HasProduced` is true (see [Using it in a game](#using-it-in-a-game)). |
-| The color bands and the contour lines do not line up | The consumer's `height_min`/`height_max`/`contour_interval` were not pushed from the compositor, or a stale value was hand-authored on the material. Bind them from the compositor at load (see [Using it in a game](#using-it-in-a-game)). |
+| The color bands and the contour lines do not line up | The consumer is reading a stale segment texture. Confirm the material's `segments` is bound to the same shared `Texture2DRD` `.tres` assigned to the compositor's `SegmentTexture`, so the tint and the lines read the elevation model the seed pass baked in. |
 | Contour lines never appear / the map is a flat tint | The producer is not running. Confirm the renderer is Forward+, the compositor is on the map camera, the camera `cull_mask` includes the terrain layer, and the camera near/far/size actually frame the terrain. |
 | Lines are invisible on a dark palette | They are gradient-derived and darkening to near-black. Set `line_color_from_gradient = 0` with a `line_color`, or make `line_gradient_lightness` positive. |
 | The terrain changed but the map did not | The producer renders once (`render_target_update_mode = Once`). For dynamic terrain, raise the SubViewport's update mode so the passes re-run. |
-| The map is blank in the editor (not playing) | Use a `TopographicMapView` node with its `Compositor` and `HeightSource` exports set (a bare `ColorRect` has nothing binding its runtime inputs at author time), and make sure the map SubViewport's `render_target_update_mode` renders in the editor. See [Editor preview](#editor-preview). |
+| The map is blank in the editor (not playing) | The inspector-bound inputs render in the editor too, so confirm `height_buffer` and `segments` are bound on the material, the compositor's `SegmentTexture` is assigned, and the map SubViewport's `render_target_update_mode` renders in the editor (`Always` for a live preview, `Once` to render on scene load). |
+| Opening a consumer scene in the editor logs "Path to node is invalid" then "Uniforms were never supplied for set (1)" | Benign and editor-only. The editor resolves a `ViewportTexture`'s `viewport_path` one frame after the scene opens, so the map `ColorRect` draws once before `height_buffer` is ready, then the preview renders normally. The running game is unaffected (scene instantiation resolves the texture before the first draw). No scene-format change removes this one-time warning; suppressing it would require an editor-time `[Tool]` script to gate that first draw. Assign `height_buffer` through the inspector (do not hand-write the `ViewportTexture` in the `.tscn`). |
 | Renamed an addon file and the project fails to load | Renaming resource files outside the editor leaves stale `.import`/UID caches. Let the editor rescan (reopen it, or run `godot --headless --import`). |
 
 ## See also

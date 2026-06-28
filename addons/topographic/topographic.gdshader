@@ -7,8 +7,8 @@ shader_type canvas_item;
 // pixel, so lines stay crisp and constant-width at any zoom with no texel facets. Elevation
 // is the only concept: low ground (including underwater) takes the gradient's low colors.
 
-// Elevation tint: the gradient. The height range it spans is a runtime input owned by the
-// compositor (height_min/height_max, in the Runtime group).
+// Elevation tint: the gradient. The height range it spans (height_min/height_max) is baked
+// into the segment texture's metadata texel by the compositor and read back in-shader.
 group_uniforms Elevation;
 /**
  * Gradient mapping elevation (height_min..height_max) to color. Colors both the
@@ -16,8 +16,9 @@ group_uniforms Elevation;
  */
 uniform sampler2D elevation_gradient : filter_linear, repeat_disable;
 
-// Contour line styling. Widths are in screen pixels, kept constant at any zoom via px_per_uv.
-// The contour interval itself is a runtime input owned by the compositor (in the Runtime group).
+// Contour line styling. Widths are in screen pixels, kept constant at any zoom via the
+// in-shader px_per_uv derivation. The contour interval is baked into the segment texture's
+// metadata texel by the compositor and read back in-shader.
 group_uniforms Contours;
 /** Every Nth contour line is drawn as a major (thicker) line. */
 uniform float lines_per_major : hint_range(1.0, 20.0, 1.0) = 5.0;
@@ -47,41 +48,23 @@ uniform float line_gradient_lightness : hint_range(-1.0, 1.0, 0.01) = -0.05;
  */
 uniform float line_gradient_shift : hint_range(-0.5, 0.5, 0.01) = -0.3;
 
-// Runtime inputs bound from code; do not hand-edit in the inspector. The elevation model
-// (height_min, height_max, contour_interval) is owned by the compositor and pushed in so the
-// tint and the seeded lines always agree; the textures and window are bound by the view driver.
+// Data inputs. Wire height_buffer to a ViewportTexture of the map SubViewport, and segments to
+// the compositor's shared Texture2DRD. The elevation model (height_min/height_max/contour_interval)
+// is not a uniform: the compositor bakes it into the segment texture's last texel and this shader
+// reads it back, so producer and consumer cannot drift. window_center/window_span select the
+// visible region; a pan/zoom map drives them from its own script.
 group_uniforms Runtime;
-/**
- * [b]Bound from the compositor's HeightMin.[/b] World height mapped to the bottom of the
- * gradient. Owned by the producer so the tint bands and the contour lines line up. Do not edit.
- */
-uniform float height_min = -40.0;
-/**
- * [b]Bound from the compositor's HeightMax.[/b] World height mapped to the top of the
- * gradient. Do not edit.
- */
-uniform float height_max = 110.0;
-/**
- * [b]Bound from the compositor's ContourInterval.[/b] World-height step between contour lines.
- * Owned by the producer so the lines and the tint bands coincide. Do not edit.
- */
-uniform float contour_interval = 10.0;
-/** [b]Bound by the view driver.[/b] Shared height buffer (R = normalized height, G = mask). Do not edit. */
+/** Shared height buffer (R = normalized height, G = mask), from a ViewportTexture. */
 uniform sampler2D height_buffer : filter_linear, repeat_disable;
 /**
- * [b]Bound by MapUi.[/b] Compositor's per-cell contour segment texture
- * (x0,y0,x1,y1 in UV; x0 < 0 means no contour). Do not edit.
+ * Compositor's per-cell contour segment texture (x0,y0,x1,y1 in UV; x0 < 0 means no contour).
+ * Wire to the same shared Texture2DRD the compositor writes.
  */
 uniform sampler2D segments : filter_nearest, repeat_disable;
-/** [b]Set by MapUi.[/b] Center of the sampled buffer-UV window (pan). Do not edit. */
+/** Center of the sampled buffer-UV window (pan). */
 uniform vec2 window_center = vec2(0.5);
-/** [b]Set by MapUi.[/b] Size of the sampled buffer-UV window (zoom). Do not edit. */
+/** Size of the sampled buffer-UV window (zoom). */
 uniform vec2 window_span = vec2(1.0);
-/**
- * [b]Set by MapUi.[/b] Screen pixels per UV unit at the current zoom; this is what keeps
- * the contour line width constant in screen pixels. Do not edit.
- */
-uniform float px_per_uv = 1.0;
 
 group_uniforms;
 
@@ -96,7 +79,7 @@ float seg_dist(vec2 p, vec4 seg) {
 // Nearest contour-segment distance (UV) to a buffer point, searching the cells around it.
 // The search radius scales with zoom: at high zoom the line spans one cell, at min zoom a
 // constant-width screen line can cover several cells, so widen the neighborhood to match.
-float vector_line_dist(vec2 buffer_uv) {
+float vector_line_dist(vec2 buffer_uv, float px_per_uv) {
     vec2 tex = vec2(textureSize(segments, 0));
     float max_width_px = max(minor_line_width_px, major_line_width_px);
     int radius = clamp(int(ceil((max_width_px + 1.5) / px_per_uv * tex.x)), 1, 8);
@@ -121,11 +104,25 @@ float vector_line_dist(vec2 buffer_uv) {
 
 void fragment() {
     vec2 buffer_uv = clamp(window_center + (UV - vec2(0.5)) * window_span, vec2(0.0), vec2(1.0));
+
+    // Elevation model from the segment texture's last texel (written by the seed pass). The
+    // line search never reads this texel, so it is a safe metadata slot. Before the producer's
+    // first render the placeholder reads zero, so guard the interval against divide-by-zero.
+    vec4 meta = texelFetch(segments, ivec2(textureSize(segments, 0)) - 1, 0);
+    float height_min = meta.r;
+    float height_max = meta.g;
+    float contour_interval = max(meta.b, 0.0001);
+
+    // Screen pixels per buffer-UV unit, derived from the rect's pixel size (1.0 / fwidth(UV.x)
+    // is the rect width in pixels) and the window span. Keeps the line width constant in screen
+    // pixels with no driver pushing the value.
+    float px_per_uv = (1.0 / max(fwidth(UV.x), 1e-9)) / max(window_span.x, 0.0001);
+
     float h = mix(height_min, height_max, texture(height_buffer, buffer_uv).r);
     float span = max(0.0001, height_max - height_min);
 
     // Exact screen-pixel distance to the nearest contour line for this display pixel.
-    float dist_px = vector_line_dist(buffer_uv) * px_per_uv;
+    float dist_px = vector_line_dist(buffer_uv, px_per_uv) * px_per_uv;
     float level_index = floor(h / contour_interval + 0.5);
 
     // Anti-aliased hypsometric tint. A band boundary IS a contour line, so the color step

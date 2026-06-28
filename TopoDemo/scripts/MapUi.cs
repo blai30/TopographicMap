@@ -37,8 +37,8 @@ public partial class MapUi : Control
 
     public override void _Ready()
     {
-        // The TopographicMapView nodes (Minimap, WorldMap) bind their own runtime inputs and
-        // elevation model. This driver owns only the view window, markers, and reveal gating.
+        // The map ColorRects (Minimap, WorldMap) bind their textures and elevation model in
+        // the inspector. This driver owns only the view window, markers, and reveal gating.
         WorldMapOverlay.Visible = false;
 
         // Keep the minimap hidden until the compositor has produced the segment texture
@@ -176,9 +176,7 @@ public partial class MapUi : Control
 
     private Vector2 WorldToUv(Vector3 world) => new(world.X / TerrainSize + 0.5f, world.Z / TerrainSize + 0.5f);
 
-    // Set a map's sampling window. Center and span are in buffer-UV space. px_per_uv
-    // converts a UV-space distance to screen pixels at the current zoom so lines stay a
-    // constant screen width: one UV unit spans view.Size.X / span screen pixels.
+    // Set a map's sampling window. Center and span are in buffer-UV space.
     private static void SetWindow(ColorRect view, Vector2 center, float span)
     {
         if (view.Material is not ShaderMaterial mat) return;
@@ -186,7 +184,6 @@ public partial class MapUi : Control
         float clampedSpan = Mathf.Max(span, 0.00001f);
         mat.SetShaderParameter("window_center", center);
         mat.SetShaderParameter("window_span", new Vector2(clampedSpan, clampedSpan));
-        mat.SetShaderParameter("px_per_uv", view.Size.X / clampedSpan);
     }
 
     // Zoom while keeping the world point under screenPos fixed on screen.
