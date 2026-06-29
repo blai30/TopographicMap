@@ -16,10 +16,12 @@ public partial class TopographicCompositorEffect : CompositorEffect
     [Export] public float HeightMin = -40.0f;
     [Export] public float HeightMax = 110.0f;
     [Export] public float ContourInterval = 10.0f;
-    [Export] public float CameraY = 200.0f;
-    [Export] public float NearPlane = 80.0f;
-    [Export] public float FarPlane = 245.0f;
-    [Export] public bool DepthReversed = true;
+
+    // The camera rig (position Y, near and far clip distances) is read from RenderSceneData each
+    // frame in _RenderCallback, so it tracks the actual map camera and cannot drift out of sync.
+    // The depth buffer is reverse-Z: the compositor needs compute, which only the RD (Forward+/
+    // Mobile) renderer provides, and that renderer uses a reversed depth buffer.
+    private const bool DepthReversed = true;
 
     // Optional pre-seed blur of the height buffer, in buffer texels. 0 = off (no blur); the
     // default 4 smooths rough/high-frequency terrain, and higher values give smoother, flowing
@@ -36,26 +38,12 @@ public partial class TopographicCompositorEffect : CompositorEffect
     // at _Ready, before the first render, captures a live object rather than null; the render
     // callback arms its RID on that same instance. An inspector-assigned .tres replaces this
     // throwaway (it holds no RD texture, so nothing is leaked).
-    private Texture2Drd _segmentTexture = new();
-
-    [Export]
-    public Texture2Drd SegmentTexture
-    {
-        get => _segmentTexture;
-        set => _segmentTexture = value;
-    }
+    [Export] public Texture2Drd SegmentTexture { get; set; } = new();
 
     // Persistent height buffer (R = normalized world height, G = coverage mask), wrapped as a
     // Texture2Drd so a canvas shader can sample it directly. Assign the same shared .tres here
     // and to each consumer material's height_buffer.
-    private Texture2Drd _heightTexture = new();
-
-    [Export]
-    public Texture2Drd HeightTexture
-    {
-        get => _heightTexture;
-        set => _heightTexture = value;
-    }
+    [Export] public Texture2Drd HeightTexture { get; set; } = new();
 
     // True once the first render callback has produced the textures; consumers wait on it
     // before drawing. Set on the rendering thread, read on the main thread, hence volatile.
@@ -134,8 +122,8 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
         // Clear the wrappers' RIDs before the underlying RD textures are freed, or the setter would
         // operate on a freed RID.
-        if (_segmentTexture != null) _segmentTexture.TextureRdRid = new();
-        if (_heightTexture != null) _heightTexture.TextureRdRid = new();
+        if (SegmentTexture != null) SegmentTexture.TextureRdRid = new();
+        if (HeightTexture != null) HeightTexture.TextureRdRid = new();
 
         // RenderingDevice.FreeRid must run on the render thread, but this can be called from the
         // main thread (predelete, or a node's _ExitTree); freeing directly there errors. Defer to
@@ -194,7 +182,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
         var previous = _heightImage;
         _heightImage = _renderingDevice.TextureCreate(format, new(), []);
-        _heightTexture.TextureRdRid = _heightImage;
+        HeightTexture.TextureRdRid = _heightImage;
         FreeRid(previous);
         _heightImageSize = size;
     }
@@ -220,7 +208,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
         // setter operating on a freed RID ("Attempted to free invalid ID" / double free).
         var previous = _segments;
         _segments = _renderingDevice.TextureCreate(format, new(), []);
-        _segmentTexture.TextureRdRid = _segments;
+        SegmentTexture.TextureRdRid = _segments;
         FreeRid(previous);
         _segmentSize = size;
     }
@@ -295,6 +283,21 @@ public partial class TopographicCompositorEffect : CompositorEffect
         var size = sceneBuffers.GetInternalSize();
         if (size.X == 0 || size.Y == 0) return;
 
+        // Read the camera rig straight from this frame's scene data so it tracks the real map camera
+        // with no exports to keep in sync. cam_y comes from the camera transform; the near/far clip
+        // distances are derived from the orthographic projection's z-column, which maps view-space
+        // depth as d = projZ * view_z + projW (reverse-Z [0,1]) and inverts to near = (projW - 1) /
+        // projZ, far = projW / projZ. GetZNear/GetZFar cannot be used here: they assume a perspective
+        // frustum and return garbage for an orthographic projection.
+        var sceneData = renderData.GetRenderSceneData();
+        if (sceneData is null) return;
+        float camY = sceneData.GetCamTransform().Origin.Y;
+        var camProjection = sceneData.GetCamProjection();
+        float projZ = camProjection.Z.Z;
+        float projW = camProjection.W.Z;
+        float nearPlane = (projW - 1.0f) / projZ;
+        float farPlane = projW / projZ;
+
         EnsureSegmentTexture(size);
         EnsureHeightImage(size);
 
@@ -304,7 +307,7 @@ public partial class TopographicCompositorEffect : CompositorEffect
         uint xGroups = ((uint)size.X - 1) / 8 + 1;
         uint yGroups = ((uint)size.Y - 1) / 8 + 1;
 
-        byte[] heightPush = Floats(size.X, size.Y, CameraY, NearPlane, FarPlane, HeightMin, HeightMax,
+        byte[] heightPush = Floats(size.X, size.Y, camY, nearPlane, farPlane, HeightMin, HeightMax,
             DepthReversed ? 1.0f : 0.0f);
         byte[] seedPush = Floats(size.X, size.Y, HeightMin, HeightMax, ContourInterval, 0f, 0f, 0f);
         byte[] blurPushH = blur ? BlurPush(size, new(1, 0), ContourSmoothness) : null;
