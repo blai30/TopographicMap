@@ -70,8 +70,6 @@ public partial class DemoTerrain : Node3D
         // only to gate the consumer on the producer's first render.
         _effect = (TopographicCompositorEffect)TopDownCamera.Compositor.CompositorEffects[0];
 
-        // Keep the consumer hidden until the producer's first render, or it samples the
-        // segment texture before its RID is live and trips a "set (1)" draw error.
         TopoRect.Visible = false;
 
         string[] args = OS.GetCmdlineUserArgs();

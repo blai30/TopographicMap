@@ -61,7 +61,7 @@ Note the two layers under `WorldMapOverlay`: the overlay itself is a full-screen
 
 ### `scripts/MapUi.cs` (the integration centerpiece)
 
-Drives the HUD map. The map textures are bound in the inspector (see the scene wiring below), not by this script. Each frame it computes a sampling window and pushes `window_center`/`window_span` into the right material (its `SetWindow` helper), and positions the marker overlays. The minimap uses a fixed player-centered window; the world map uses a pan/zoom window with drag and scroll handling. It also holds the first-frame guard: the always-visible minimap stays hidden until `MapCompositor.HasProduced` is true, so it never samples the segment texture before the producer has run, and it keeps the `MapCompositor` reference solely for that gating. This file is the concrete version of the [Using it in a game](../addons/topographic/README.md#using-it-in-a-game) section.
+Drives the HUD map. The map textures are bound in the inspector (see the scene wiring below), not by this script. Each frame it computes a sampling window and pushes `window_center`/`window_span` into the right material (its `SetWindow` helper), and positions the marker overlays. The minimap uses a fixed player-centered window; the world map uses a pan/zoom window with drag and scroll handling. It also holds the first-frame guard: the minimap is saved hidden in the scene and revealed only once `MapCompositor.HasProduced` is true, so it never samples the segment texture before the producer has run (and never draws in the editor, where the producer does not run at all), and it keeps the `MapCompositor` reference solely for that gating. This file is the concrete version of the [Using it in a game](../addons/topographic/README.md#using-it-in-a-game) section.
 
 ### `scenes/DemoMinimap.tscn` (the wiring)
 
@@ -69,7 +69,7 @@ The scene that connects everything. The producer side is `MapView` (a `use_hdr_2
 
 ### `assets/map_view_compositor_effect.tres`
 
-The `TopographicCompositorEffect` resource assigned to the map camera's compositor. Its `HeightMin`/`HeightMax`/`ContourInterval` and camera-rig exports are the producer half of the look; it is the single owner of the height range and interval. Its `HeightTexture` and `SegmentTexture` point at the two shared `Texture2DRD` `.tres` files, and `BufferSize` is set to the SubViewport's `2048x2048` so those textures are allocated at their final size up front (no first-render resize, keeping the editor preview's console clean). No script pushes that elevation model into the materials: the seed pass bakes it into the segment texture's last texel, and the consumer shader reads it back with one `texelFetch`, so there is nothing to match by hand.
+The `TopographicCompositorEffect` resource assigned to the map camera's compositor. Its `HeightMin`/`HeightMax`/`ContourInterval` and camera-rig exports are the producer half of the look; it is the single owner of the height range and interval. Its `HeightTexture` and `SegmentTexture` point at the two shared `Texture2DRD` `.tres` files. No script pushes that elevation model into the materials: the seed pass bakes it into the segment texture's last texel, and the consumer shader reads it back with one `texelFetch`, so there is nothing to match by hand.
 
 ### `assets/terrain_material.tres` + `shaders/terrain.gdshader`, `assets/water_material.tres` + `shaders/water.gdshader`
 

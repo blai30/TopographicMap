@@ -17,4 +17,3 @@ script = ExtResource("1_lbrya")
 metadata/_custom_type_script = "uid://b1x1hdo5vbqss"
 SegmentTexture = ExtResource("2_seg")
 HeightTexture = ExtResource("3_height")
-BufferSize = Vector2i(2048, 2048)

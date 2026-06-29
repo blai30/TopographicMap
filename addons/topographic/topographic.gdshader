@@ -93,8 +93,7 @@ float vector_line_dist(vec2 buffer_uv, float px_per_uv) {
             ivec2 cell = clamp(base + ivec2(dx, dy), ivec2(0), hi);
             vec4 seg = texelFetch(segments, cell, 0);
             // x0 <= 0 means no contour: the seed pass writes -1 for empty cells, and a valid
-            // endpoint UV is always > 0. This also rejects the 1x1 placeholder texture (zero
-            // init) bound before the first compositor render and any out-of-range fetch.
+            // endpoint UV is always > 0. Also rejects any out-of-range fetch.
             if (seg.x <= 0.0) { continue; }
             best = min(best, seg_dist(buffer_uv, seg));
         }
@@ -106,8 +105,8 @@ void fragment() {
     vec2 buffer_uv = clamp(window_center + (UV - vec2(0.5)) * window_span, vec2(0.0), vec2(1.0));
 
     // Elevation model from the segment texture's last texel (written by the seed pass). The
-    // line search never reads this texel, so it is a safe metadata slot. Before the producer's
-    // first render the placeholder reads zero, so guard the interval against divide-by-zero.
+    // line search never reads this texel, so it is a safe metadata slot. Guard the interval
+    // against a zero divisor.
     vec4 meta = texelFetch(segments, ivec2(textureSize(segments, 0)) - 1, 0);
     float height_min = meta.r;
     float height_max = meta.g;

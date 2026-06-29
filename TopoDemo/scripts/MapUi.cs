@@ -40,11 +40,6 @@ public partial class MapUi : Control
         // The map ColorRects (Minimap, WorldMap) bind their textures and elevation model in
         // the inspector. This driver owns only the view window, markers, and reveal gating.
         WorldMapOverlay.Visible = false;
-
-        // Keep the minimap hidden until the compositor has produced the segment texture
-        // (see _Process). Drawing it before the producer's first render samples the segment
-        // texture with no live RID and trips a "Uniforms were never supplied for set (1)"
-        // draw error on the first frame.
         Minimap.Visible = false;
 
         SetupMarker(MinimapMarker);
