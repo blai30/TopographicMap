@@ -19,9 +19,6 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
     // The camera rig (position Y, near and far clip distances) is read from RenderSceneData each
     // frame in _RenderCallback, so it tracks the actual map camera and cannot drift out of sync.
-    // The depth buffer is reverse-Z: the compositor needs compute, which only the RD (Forward+/
-    // Mobile) renderer provides, and that renderer uses a reversed depth buffer.
-    private const bool DepthReversed = true;
 
     // Optional pre-seed blur of the height buffer, in buffer texels. 0 = off (no blur); the
     // default 4 smooths rough/high-frequency terrain, and higher values give smoother, flowing
@@ -307,8 +304,9 @@ public partial class TopographicCompositorEffect : CompositorEffect
         uint xGroups = ((uint)size.X - 1) / 8 + 1;
         uint yGroups = ((uint)size.Y - 1) / 8 + 1;
 
-        byte[] heightPush = Floats(size.X, size.Y, camY, nearPlane, farPlane, HeightMin, HeightMax,
-            DepthReversed ? 1.0f : 0.0f);
+        // The trailing 1 is the reverse-Z flag: the compositor needs compute, which only the RD
+        // (Forward+/Mobile) renderer provides, and that renderer always uses a reversed depth buffer.
+        byte[] heightPush = Floats(size.X, size.Y, camY, nearPlane, farPlane, HeightMin, HeightMax, 1.0f);
         byte[] seedPush = Floats(size.X, size.Y, HeightMin, HeightMax, ContourInterval, 0f, 0f, 0f);
         byte[] blurPushH = blur ? BlurPush(size, new(1, 0), ContourSmoothness) : null;
         byte[] blurPushV = blur ? BlurPush(size, new(0, 1), ContourSmoothness) : null;
