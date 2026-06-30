@@ -186,11 +186,13 @@ public partial class TopographicCompositorEffect : CompositorEffect
 
     private void CreateSegmentTexture(Vector2I size)
     {
-        // StorageBit: the seed pass writes it. SamplingBit: the canvas shader samples it.
+        // Twice as wide as the cell grid: the seed pass stores two contour segments per cell
+        // (primary + secondary), so a saddle cell can carry both of its branches. StorageBit:
+        // the seed pass writes it. SamplingBit: the canvas shader samples it.
         var format = new RDTextureFormat
         {
             Format = RenderingDevice.DataFormat.R32G32B32A32Sfloat,
-            Width = (uint)size.X,
+            Width = (uint)size.X * 2,
             Height = (uint)size.Y,
             Depth = 1,
             ArrayLayers = 1,

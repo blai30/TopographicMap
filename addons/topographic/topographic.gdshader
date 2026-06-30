@@ -57,8 +57,10 @@ group_uniforms Runtime;
 /** Shared height buffer (R = normalized height, G = mask), from a ViewportTexture. */
 uniform sampler2D height_buffer : filter_linear, repeat_disable;
 /**
- * Compositor's per-cell contour segment texture (x0,y0,x1,y1 in UV; x0 < 0 means no contour).
- * Wire to the same shared Texture2DRD the compositor writes.
+ * Compositor's contour segment texture (x0,y0,x1,y1 in UV; x0 < 0 means no contour). Holds two
+ * texels per cell (primary + secondary, so the texture is twice as wide as the cell grid); the
+ * secondary carries a saddle cell's second branch. Wire to the same shared Texture2DRD the
+ * compositor writes.
  */
 uniform sampler2D segments : filter_nearest, repeat_disable;
 /** Center of the sampled buffer-UV window (pan). */
@@ -79,23 +81,28 @@ float seg_dist(vec2 p, vec4 seg) {
 // Nearest contour-segment distance (UV) to a buffer point, searching the cells around it.
 // The search radius scales with zoom: at high zoom the line spans one cell, at min zoom a
 // constant-width screen line can cover several cells, so widen the neighborhood to match.
+// The segment texture holds two texels per logical cell (primary + secondary), so it is twice
+// as wide as the cell grid; a cell stores a secondary segment only at a saddle. Both texels are
+// tested so saddle cells contribute both branches.
 float vector_line_dist(vec2 buffer_uv, float px_per_uv) {
-    vec2 tex = vec2(textureSize(segments, 0));
+    ivec2 tex = textureSize(segments, 0);
+    vec2 grid = vec2(float(tex.x / 2), float(tex.y)); // logical cell grid (texture is 2x wide)
     float max_width_px = max(minor_line_width_px, major_line_width_px);
-    int radius = clamp(int(ceil((max_width_px + 1.5) / px_per_uv * tex.x)), 1, 8);
+    int radius = clamp(int(ceil((max_width_px + 1.5) / px_per_uv * grid.x)), 1, 8);
 
-    ivec2 base = ivec2(floor(buffer_uv * tex - 0.5));
-    ivec2 hi = ivec2(tex) - 2; // last cell index (a cell spans px..px+1)
+    ivec2 base = ivec2(floor(buffer_uv * grid - 0.5));
+    ivec2 hi = ivec2(grid) - 2; // last cell index (a cell spans px..px+1)
 
     float best = 1e3;
     for (int dy = -radius; dy <= radius; dy++) {
         for (int dx = -radius; dx <= radius; dx++) {
             ivec2 cell = clamp(base + ivec2(dx, dy), ivec2(0), hi);
-            vec4 seg = texelFetch(segments, cell, 0);
-            // x0 <= 0 means no contour: the seed pass writes -1 for empty cells, and a valid
-            // endpoint UV is always > 0. Also rejects any out-of-range fetch.
-            if (seg.x <= 0.0) { continue; }
-            best = min(best, seg_dist(buffer_uv, seg));
+            // x0 <= 0 means no contour: the seed pass writes -1 for empty texels, and a valid
+            // endpoint UV is always > 0. The secondary texel carries a saddle's second branch.
+            vec4 seg0 = texelFetch(segments, ivec2(cell.x * 2, cell.y), 0);
+            if (seg0.x > 0.0) { best = min(best, seg_dist(buffer_uv, seg0)); }
+            vec4 seg1 = texelFetch(segments, ivec2(cell.x * 2 + 1, cell.y), 0);
+            if (seg1.x > 0.0) { best = min(best, seg_dist(buffer_uv, seg1)); }
         }
     }
     return best;
